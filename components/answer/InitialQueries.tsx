@@ -15,7 +15,7 @@ const InitialQueries = ({ questions, handleFollowUpClick }: InitialQueriesProps)
     <div className="">
       <div className="flex items-center">
       </div>
-      <ul className="mt-2">
+      {/* <ul className="mt-2">
         {questions.map((question, index) => (
           <li
             key={index}
@@ -28,7 +28,7 @@ const InitialQueries = ({ questions, handleFollowUpClick }: InitialQueriesProps)
             <p className="dark:text-white block sm:inline text-md sm:text-lg font-semibold dark:text-white text-black">{question}</p>
           </li>
         ))}
-      </ul>
+      </ul> */}
     </div>
   );
 };

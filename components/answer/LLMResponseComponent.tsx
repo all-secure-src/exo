@@ -15,8 +15,8 @@ const StreamingComponent = ({ currentLlmResponse }: { currentLlmResponse: string
             {currentLlmResponse && (
                 <div className="dark:bg-slate-800 bg-white shadow-lg rounded-lg p-4 mt-4">
                     <div className="flex items-center">
-                        <h2 className="text-lg font-semibold flex-grow dark:text-white text-black">Answer</h2>
-                        <img src="./groq.png" alt="groq logo" className='w-6 h-6' />
+                        <h2 className="text-lg font-semibold flex-grow dark:text-white text-black">Omega Think (Alpha v1.0)</h2>
+                        {/* <img src="./omega.png" alt="omega logo" className='w-6 h-6' /> */}
                     </div>
                     <div className="dark:text-gray-300 text-gray-800">{currentLlmResponse}</div>
                 </div>
@@ -36,12 +36,12 @@ const LLMResponseComponent = ({ llmResponse, currentLlmResponse, index }: LLMRes
                 // 6. If 'llmResponse' is not empty, render a div with the 'Markdown' component
                 <div className="dark:bg-slate-800 bg-white shadow-lg rounded-lg p-4 mt-4">
                     <div className="flex items-center">
-                        <h2 className="text-lg font-semibold flex-grow dark:text-white text-black">Response</h2>
+                        <h2 className="text-lg font-semibold flex-grow dark:text-white text-black">Omega Think (Alpha v1.0)</h2>
                     </div>
                     <div className="dark:text-gray-300 text-gray-800 markdown-container">
                         <Markdown>{llmResponse}</Markdown>
                         <div className="flex items-center justify-end">
-                            <img src="./powered-by-groq.svg" alt="powered by groq" className='mt-2 h-6' />
+                            <img src="./powered-by-omega.svg" alt="powered by omega" className='mt-2 h-6' />
                         </div>
                     </div>
                 </div>

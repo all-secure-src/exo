@@ -22,7 +22,7 @@ const FollowUpComponent = ({ followUp, handleFollowUpClick }: { followUp: Follow
                 <h2 className="text-lg font-semibold flex-grow dark:text-white text-black">Follow-Up</h2>
             </div>
             <ul className="mt-2">
-                {followUp.choices[0].message.content && JSON.parse(followUp.choices[0].message.content).followUp.map((question: string, index: number) => (
+                {followUp.choices[0].message.content && followUp.choices[0].message.content.followUp.map((question: string, index: number) => (
                     <li
                         key={index}
                         className="flex items-center mt-2 cursor-pointer"

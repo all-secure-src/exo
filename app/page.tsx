@@ -17,6 +17,7 @@ import InitialQueries from '@/components/answer/InitialQueries';
 // Sidebar components
 import LLMResponseComponent from '@/components/answer/LLMResponseComponent';
 import ImagesComponent from '@/components/answer/ImagesComponent';
+import GenImagesComponent from '@/components/answer/GenImagesComponent';
 import VideosComponent from '@/components/answer/VideosComponent';
 // Function calling components
 const MapComponent = dynamic(() => import('@/components/answer/Map'), { ssr: false, });
@@ -52,6 +53,7 @@ interface StreamMessage {
   llmResponse?: string;
   llmResponseEnd?: boolean;
   images?: any;
+  omega_art?: any;
   videos?: any;
   followUp?: any;
   conditionalFunctionCallUI?: any;
@@ -193,6 +195,9 @@ export default function Page() {
             if (typedMessage.images) {
               currentMessage.images = [...typedMessage.images];
             }
+            if (typedMessage.omega_art) {
+              currentMessage.omega_art = [...typedMessage.omega_art];
+            }
             if (typedMessage.videos) {
               currentMessage.videos = [...typedMessage.videos];
             }
@@ -231,32 +236,43 @@ export default function Page() {
         <div className="flex flex-col">
           {messages.map((message, index) => (
             <div key={`message-${index}`} className="flex flex-col md:flex-row">
-              <div className="w-full md:w-3/4 md:pr-2">
-                {message.type === 'userMessage' && <UserMessageComponent message={message.userMessage} />}
-                {message.ticker && message.ticker.length > 0 && (
-                  <FinancialChart key={`financialChart-${index}`} ticker={message.ticker} />
-                )}
-                {message.searchResults && (<SearchResultsComponent key={`searchResults-${index}`} searchResults={message.searchResults} />)}
-                {message.places && message.places.length > 0 && (
-                  <MapComponent key={`map-${index}`} places={message.places} />
-                )}
-                <LLMResponseComponent llmResponse={message.content} currentLlmResponse={currentLlmResponse} index={index} key={`llm-response-${index}`}
-                />
-                {message.followUp && (
-                  <div className="flex flex-col">
-                    <FollowUpComponent key={`followUp-${index}`} followUp={message.followUp} handleFollowUpClick={handleFollowUpClick} />
-                  </div>
-                )}
+              <div className="w-full">
+                <div style={{ width: '75%', marginLeft: 'auto', textAlign: 'right' }}>
+                  {message.type === 'userMessage' && <UserMessageComponent message={message.userMessage} />}
+                </div>
+                <div style={{ width: '75%', marginRight: 'auto' }}>
+                  {message.ticker && message.ticker.length > 0 && (
+                    <FinancialChart key={`financialChart-${index}`} ticker={message.ticker} />
+                  )}
+                  {message.omega_art && <GenImagesComponent key={`omega_art-${index}`} omega_art={message.omega_art} />}
+                  {message.shopping && message.shopping.length > 0 && <ShoppingComponent key={`shopping-${index}`} shopping={message.shopping} />}
+                  {message.videos && <VideosComponent key={`videos-${index}`} videos={message.videos} />}
+                  {message.images && <ImagesComponent key={`images-${index}`} images={message.images} />}
+                  {message.places && message.places.length > 0 && (
+                    <MapDetails key={`map-${index}`} places={message.places} />
+                  )}
+                  {message.places && message.places.length > 0 && (
+                    <MapComponent key={`map-${index}`} places={message.places} />
+                  )}
+                  <LLMResponseComponent llmResponse={message.content} currentLlmResponse={currentLlmResponse} index={index} key={`llm-response-${index}`}
+                  />
+                  {message.searchResults && (<SearchResultsComponent key={`searchResults-${index}`} searchResults={message.searchResults} />)}
+                  {message.followUp && (
+                    <div className="flex flex-col">
+                      <FollowUpComponent key={`followUp-${index}`} followUp={message.followUp} handleFollowUpClick={handleFollowUpClick} />
+                    </div>
+                  )}
+                </div>
               </div>
               {/* Secondary content area */}
-              <div className="w-full md:w-1/4 md:pl-2">
+              {/* <div className="w-full md:w-1/4 md:pl-2">
                 {message.shopping && message.shopping.length > 0 && <ShoppingComponent key={`shopping-${index}`} shopping={message.shopping} />}
                 {message.videos && <VideosComponent key={`videos-${index}`} videos={message.videos} />}
                 {message.images && <ImagesComponent key={`images-${index}`} images={message.images} />}
                 {message.places && message.places.length > 0 && (
                   <MapDetails key={`map-${index}`} places={message.places} />
                 )}
-              </div>
+              </div> */}
             </div>
           ))}
         </div>
@@ -285,7 +301,7 @@ export default function Page() {
                 ref={inputRef}
                 tabIndex={0}
                 onKeyDown={onKeyDown}
-                placeholder="Send a message."
+                placeholder="You can ask anything?"
                 className="w-full resize-none bg-transparent px-4 py-[1.3rem] focus-within:outline-none sm:text-sm dark:text-white text-black pr-[45px]"
                 autoFocus
                 spellCheck={false}

@@ -55,9 +55,9 @@ function FinancialChart({ ticker }: { ticker: string }) {
   return (
     <div className="my-5 tradingview-widget-container" ref={container} style={styles.container}>
       <div className="tradingview-widget-copyright">
-        <a href="https://www.tradingview.com/" rel="noopener nofollow" target="_blank">
+        {/* <a href="https://www.tradingview.com/" rel="noopener nofollow" target="_blank">
           <span className="blue-text">Track all markets on TradingView</span>
-        </a>
+        </a> */}
       </div>
     </div>
   );

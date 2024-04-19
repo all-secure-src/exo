@@ -6,7 +6,7 @@ import { Toaster } from '@/components/ui/toaster';
 import './globals.css';
 
 import { AI } from './action';
-import { Header } from '@/components/header';
+// import { Header } from '@/components/header';
 import { Providers } from '@/components/providers';
 
 const meta = {
@@ -17,7 +17,7 @@ const meta = {
 export const metadata: Metadata = {
   ...meta,
   title: {
-    default: 'answer website',
+    default: 'EXO',
     template: `%s - answer website`,
   },
   icons: {
@@ -50,30 +50,34 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-      <body
-        className={`font-sans antialiased ${GeistSans.variable} ${GeistMono.variable}`}
-      >
-        <Toaster />
-        <AI>
-          <Providers
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
-          >
-            <div className="flex flex-col min-h-screen">
-              <Header />
-              <main className="flex flex-col flex-1 bg-muted/50 dark:bg-background px-4">
-                {children}
-              </main>
-            </div>
-          </Providers>
-        </AI>
-        <Analytics />
-      </body>
-    </html>
+    <>
+      <html lang="en" suppressHydrationWarning>
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+        <body
+          className={`font-sans antialiased ${GeistSans.variable} ${GeistMono.variable}`}
+        >
+          <Toaster />
+          <AI>
+            <Providers
+              attribute="class"
+              defaultTheme="system"
+              enableSystem
+              disableTransitionOnChange
+            >
+              <div className="flex flex-col min-h-screen">
+                {/* <div >
+                  <img src="./logo.png" alt="EXO" className="w-6 h-6" ></img>
+                </div> */}
+                <main className="flex flex-col flex-1 dark:bg-background px-4">
+                  {children}
+                </main>
+              </div>
+            </Providers>
+          </AI>
+          <Analytics />
+        </body>
+      </html>
+    </>
   );
 }
 

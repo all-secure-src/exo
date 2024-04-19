@@ -14,17 +14,17 @@ interface ImagesComponentProps {
 }
 
 // 4. Define the 'ImagesComponent' functional component that takes 'images' as a prop
-const ImagesComponent: React.FC<ImagesComponentProps> = ({ images }) => {
-    console.log("images ---- ", images);
+const GenImagesComponent: React.FC<ImagesComponentProps> = ({ omega_art, images }) => {
     // 5. Use the 'useState' hook to manage the 'showMore' and 'selectedImage' state
+    // console.log("images --------++++++++", omega_art);
     const [showMore, setShowMore] = useState(false);
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
     // 6. Define the 'ImagesSkeleton' component to render a loading skeleton
     const ImagesSkeleton = () => (
         <div className="flex flex-wrap">
-            {Array.from({ length: 6 }).map((_, index) => (
-                <div key={index} className="w-1/6 p-1">
+            {Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="w-1/2 p-1">
                     <div className="w-full overflow-hidden aspect-square">
                         <div className="w-full h-full bg-gray-300 dark:bg-gray-700 rounded animate-pulse"></div>
                     </div>
@@ -48,11 +48,11 @@ const ImagesComponent: React.FC<ImagesComponentProps> = ({ images }) => {
     // 9. Render the 'ImagesComponent'
     return (
         <>
-            {images.length === 0 || images.length === 1 ? (
-                images.length === 1 ? (
+            {(omega_art.length === 0) || (omega_art.length === 1 && omega_art[0] == 'loading') ? (
+                omega_art.length === 1 ? (
                     <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg p-4 mt-4">
                         <div className="items-center">
-                            <h2 className="text-lg font-semibold flex-grow text-black dark:text-white">Images</h2>
+                            <h2 className="text-lg font-semibold flex-grow text-black dark:text-white">Omega Picasso (Alpha v1.0)</h2>
                             <ImagesSkeleton />
                         </div>
                     </div>
@@ -63,30 +63,20 @@ const ImagesComponent: React.FC<ImagesComponentProps> = ({ images }) => {
                 <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg p-4 mt-4">
                     <div className="flex items-center">
 
-                        <h2 className="text-lg font-semibold flex-grow text-black dark:text-white">Images</h2>
-                        {/* <img src="./search.png" alt="brave logo" className="w-6 h-6" /> */}
-                        {/* {images.length > 3 && (
-                            <div className="flex justify-center ml-2">
-                                <button
-                                    className="text-black dark:text-white focus:outline-none"
-                                    onClick={() => setShowMore(!showMore)}>
-                                    {showMore ? <IconClose /> : <IconPlus />}
-                                </button>
-                            </div>
-                        )} */}
+                        <h2 className="text-lg font-semibold flex-grow text-black dark:text-white">Omega Picasso (Alpha v1.0)</h2>
                     </div>
-                    <div className={`flex flex-wrap mx-1 transition-all duration-500 ${showMore ? 'max-h-[500px]' : 'max-h-[200px]'} overflow-hidden`}>
-                        {images.slice(0, showMore ? 6 : 6).map((image, index) => (
+                    <div className={`flex flex-wrap mx-1 transition-all duration-500 overflow-hidden`}>
+                        {omega_art.slice(0, omega_art.length > 2 ? 4 : 2).map((image, index) => (
                             <div
                                 key={index}
-                                className="transition ease-in-out hover:-translate-y-1 hover:scale-105 duration-200 w-1/6 p-1 cursor-pointer"
-                                onClick={() => handleImageClick(image.link)}
+                                className="transition ease-in-out hover:-translate-y-1 hover:scale-105 duration-200 w-1/2 p-1 cursor-pointer"
+                                onClick={() => handleImageClick(image.image)}
                             >
-                                <div className="w-full overflow-hidden aspect-square">
+                                <div className="overflow-hidden aspect-square">
                                     <img
-                                        src={image.link}
-                                        alt={image.alt || `Image ${index}`}
-                                        className="w-full h-full object-cover"
+                                        src={image.image}
+                                        alt={image.alt || `${image.prompt}`}
+                                        className="max-h-[500px] object-contain"
                                     />
                                 </div>
                             </div>
@@ -110,4 +100,4 @@ const ImagesComponent: React.FC<ImagesComponentProps> = ({ images }) => {
     );
 };
 
-export default ImagesComponent;
+export default GenImagesComponent;

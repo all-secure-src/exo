@@ -77,15 +77,3 @@ The engine will process your query and return a comprehensive answer along with 
 ## Contributing
 
 Contributions to the project are welcome. Feel free to fork the repository, make your changes, and submit a pull request. You can also open issues to suggest improvements or report bugs.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for more details.
-
-I'm the developer behind Developers Digest. If you find my work helpful or enjoy what I do, consider supporting me. Here are a few ways you can do that:
-
-- **Patreon**: Support me on Patreon at [patreon.com/DevelopersDigest](https://www.patreon.com/DevelopersDigest)
-- **Buy Me A Coffee**: You can buy me a coffee at [buymeacoffee.com/developersdigest](https://www.buymeacoffee.com/developersdigest)
-- **Website**: Check out my website at [developersdigest.tech](https://developersdigest.tech)
-- **Github**: Follow me on GitHub at [github.com/developersdigest](https://github.com/developersdigest)
-- **Twitter**: Follow me on Twitter at [twitter.com/dev__digest](https://twitter.com/dev__digest)
