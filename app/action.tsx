@@ -5,7 +5,7 @@ import axios from "axios";
 
 const axios_instance = axios.create({});
 
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const delay = (ms: any) => new Promise((resolve) => setTimeout(resolve, ms));
 
 import { config } from './config';
 import { functionCallingFlow, functionCallingSpecific, functionCallingReference } from './function-calling';
@@ -40,7 +40,7 @@ export async function getSources2(query: string, freshness: string = ""): Promis
     const requestOptions: RequestInit = {
       method: 'POST',
       headers: {
-        'authorization': process.env.QXLABAPI_KEY as string,
+        'authorization': process.env.US_API_KEY as string,
         'Content-Type': 'application/json'
       },
       body: data
@@ -161,12 +161,12 @@ const relevantQuestions = async (sources: SearchResult[], query = "The original 
   });
 
   if (response.choices != null) {
-    response.choices[0].message.content = extractJsonContent(response.choices[0].message.content);
+    response.choices[0].message.content = extractJsonContent(response.choices[0].message.content || "");
   }
   return response;
 };
 
-const relevantImagePrompts = async (query): Promise<any> => {
+const relevantImagePrompts = async (query: string): Promise<any> => {
   const code_symbole = '```';
   const response = await client.chat.completions.create({
     messages: [
@@ -198,7 +198,7 @@ const relevantImagePrompts = async (query): Promise<any> => {
   });
 
   if (response.choices != null) {
-    response.choices[0].message.content = extractJsonContent(response.choices[0].message.content);
+    response.choices[0].message.content = extractJsonContent(response.choices[0].message.content || "");
   }
   return response;
 };
@@ -258,13 +258,13 @@ export async function generate_image(prompt: string) {
       // console.error('Error generating image:', responseData.message);
     }
   } catch (error) {
-    if (error.response) {
-      // console.error('Error response status:', error.response.status);
-    } else if (error.request) {
-      // console.error('No response received:', error.request);
-    } else {
-      // console.error('Error setting up the request:', error.message);
-    }
+    // if (error.response) {
+    //   // console.error('Error response status:', error.response.status);
+    // } else if (error.request) {
+    //   // console.error('No response received:', error.request);
+    // } else {
+    //   // console.error('Error setting up the request:', error.message);
+    // }
   }
 }
 
@@ -421,45 +421,43 @@ async function myAction(userMessage: string, history: any): Promise<any> {
     let llmMessage = [];
     let gen_images;
 
-    if (functionCallingFlowCall != null && functionCallingFlowCall != undefined) {
-
-      if (functionCallingFlowCall.type == 'generate_image') {
+    if (functionCallingFlowCall && typeof functionCallingFlowCall === 'object' && 'type' in functionCallingFlowCall) {
+      if (functionCallingFlowCall.type === 'generate_image') {
         streamable.update({ 'omega_art': ['loading'] });
-
+    
         gen_images = await generate_image(functionCallingFlowCall.parameters.prompt);
-
+    
         let omage_arts = [];
-
+    
         for (const item of gen_images.images) {
           omage_arts.push({
             prompt: functionCallingFlowCall.parameters.prompt,
             image: item.image
           });
         }
-
+    
         streamable.update({ 'omega_art': omage_arts });
-
+    
         custom_model_id = 'omega_art';
         llm_stream = false;
-      } else if (functionCallingFlowCall.type == 'directly_answer') {
+      } else if (functionCallingFlowCall.type === 'directly_answer') {
         llmMessage.push({
           role: "system", content: llm_preamble
         });
-
+    
         if (tmpHistroy.length > 0) {
           for (let i = 0; i < tmpHistroy.length; i++) {
             llmMessage.push(tmpHistroy[i]);
           }
         }
-
+    
         llmMessage.push({
           role: "user", content: userMessage
         });
-
-      } else if (functionCallingFlowCall.type == 'news_search') {
+      } else if (functionCallingFlowCall.type === 'news_search') {
         sources = await getSources2(`News: ${functionCallingFlowCall.parameters.query}`, functionCallingFlowCall.parameters.freshness);
         streamable.update({ 'searchResults': sources });
-
+    
         let searchResultData = "";
         for (let i = 0; i < 4; i++) {
           searchResultData += `\n\n ${i + 1}: \n Title: ${sources[i].title} \n Source: ${sources[i].link} \n Description: ${sources[i].snippet} \n\n `;
@@ -522,9 +520,9 @@ async function myAction(userMessage: string, history: any): Promise<any> {
         );
 
         // custom_model_id = 'omega_1_4';
-      } else if (functionCallingFlowCall.type == 'internet_search') {
+      } else if (functionCallingFlowCall.type === 'internet_search') {
         sources = await getSources2(functionCallingFlowCall.parameters.query, functionCallingFlowCall.parameters.freshness);
-
+    
         let searchResultData = "";
         for (let i = 0; i < 4; i++) {
           searchResultData += `\n\n ${i + 1}: \n Title: ${sources[i].title} \n Source: ${sources[i].link} \n Description: ${sources[i].snippet} \n\n `;
@@ -626,19 +624,23 @@ async function myAction(userMessage: string, history: any): Promise<any> {
       );
     }
 
-    if (functionCallingReferenceCall != null && functionCallingReferenceCall != undefined) {
-      if (functionCallingReferenceCall.type == 'youtube_videos') {
-        streamable.update({ 'videos': ['loading'] });
-        (async () => {
-          const videos = await getVideos(functionCallingReferenceCall.parameters.query);
-          streamable.update({ 'videos': videos });
-        })();
+    if (functionCallingReferenceCall != null && functionCallingReferenceCall !== undefined) {
+      if (typeof functionCallingReferenceCall === 'object' && 'type' in functionCallingReferenceCall) {
+        if (functionCallingReferenceCall.type === 'youtube_videos') {
+          streamable.update({ 'videos': ['loading'] });
+          (async () => {
+            const videos = await getVideos(functionCallingReferenceCall.parameters.query);
+            streamable.update({ 'videos': videos });
+          })();
+        }
       }
     }
-
-    if (custom_model_id == 'omega_art') {
+    
+    if (custom_model_id === 'omega_art') {
       let code_symbol = '`';
-      streamable.update({ 'llmResponse': `I hope you liked the generated images for your prompt: ${code_symbol}${functionCallingFlowCall.parameters.prompt}${code_symbol}\n\nWould you like an image generated for anything else? Please let me know.` });
+      if (typeof functionCallingFlowCall === 'object' && 'parameters' in functionCallingFlowCall && 'prompt' in functionCallingFlowCall.parameters) {
+        streamable.update({ 'llmResponse': `I hope you liked the generated images for your prompt: ${code_symbol}${functionCallingFlowCall.parameters.prompt}${code_symbol}\n\nWould you like an image generated for anything else? Please let me know.` });
+      }
       streamable.update({ 'llmResponseEnd': true });
       followUp = await relevantImagePrompts(userMessage);
       streamable.update({ 'followUp': followUp });
@@ -649,43 +651,75 @@ async function myAction(userMessage: string, history: any): Promise<any> {
         model: config.inferenceModel,
         max_tokens: 1600,
       });
-
-      if (llm_stream == false) {
-        streamable.update({ 'llmResponse': chatCompletion.choices[0].message.content });
-        followUp = await relevantQuestions([chatCompletion.choices[0].message.content], userMessage);
-        streamable.update({ 'followUp': followUp });
+    
+      if (llm_stream === false) {
+        if ('choices' in chatCompletion && chatCompletion.choices[0] && 'message' in chatCompletion.choices[0] && chatCompletion.choices[0].message.content) {
+          streamable.update({ 'llmResponse': chatCompletion.choices[0].message.content });
+          // Create a SearchResult object from the content
+          const searchResult: SearchResult = {
+            title: "AI Response",
+            link: "",
+            snippet: chatCompletion.choices[0].message.content,
+            favicon: ""
+          };
+          followUp = await relevantQuestions([searchResult], userMessage);
+          streamable.update({ 'followUp': followUp });
+        }
         streamable.update({ 'llmResponseEnd': true });
       } else {
         let assistant_message = "";
-        for await (const chunk of chatCompletion) {
-          if (chunk.choices[0].delta && chunk.choices[0].finish_reason == null) {
-            if (chunk.choices[0].finish_reason == null) {
-              streamable.update({ 'llmResponse': chunk.choices[0].delta.content });
-              assistant_message += chunk.choices[0].delta.content
-            } else {
-              if (functionCallingFlowCall != null && functionCallingFlowCall != undefined) {
-                if (functionCallingFlowCall.type != 'internet_search') {
-                  followUp = await relevantQuestions([assistant_message], userMessage);
-                  streamable.update({ 'followUp': followUp });
+        if (Symbol.asyncIterator in chatCompletion) {
+          for await (const chunk of chatCompletion) {
+            if (chunk.choices[0]?.delta && chunk.choices[0].finish_reason == null) {
+              if (chunk.choices[0].finish_reason == null) {
+                streamable.update({ 'llmResponse': chunk.choices[0].delta.content });
+                assistant_message += chunk.choices[0].delta.content || '';
+              } else {
+                if (functionCallingFlowCall != null && functionCallingFlowCall !== undefined) {
+                  if (typeof functionCallingFlowCall === 'object' && 'type' in functionCallingFlowCall) {
+                    if (functionCallingFlowCall.type !== 'internet_search') {
+                      // Create a SearchResult object from the assistant_message
+                      const searchResult: SearchResult = {
+                        title: "AI Response",
+                        link: "",
+                        snippet: assistant_message,
+                        favicon: ""
+                      };
+                      followUp = await relevantQuestions([searchResult], userMessage);
+                      streamable.update({ 'followUp': followUp });
+                    }
+                  }
                 }
               }
-            }
-          } else if (chunk.choices[0].finish_reason != null) {
-            if (functionCallingFlowCall != null && functionCallingFlowCall != undefined) {
-              if (functionCallingFlowCall.type != 'internet_search') {
-                followUp = await relevantQuestions([assistant_message], userMessage);
-                streamable.update({ 'followUp': followUp });
+            } else if (chunk.choices[0]?.finish_reason != null) {
+              if (functionCallingFlowCall != null && functionCallingFlowCall !== undefined) {
+                if (typeof functionCallingFlowCall === 'object' && 'type' in functionCallingFlowCall) {
+                  if (functionCallingFlowCall.type !== 'internet_search') {
+                    // Create a SearchResult object from the assistant_message
+                    const searchResult: SearchResult = {
+                      title: "AI Response",
+                      link: "",
+                      snippet: assistant_message,
+                      favicon: ""
+                    };
+                    followUp = await relevantQuestions([searchResult], userMessage);
+                    streamable.update({ 'followUp': followUp });
+                  }
+                }
               }
+              streamable.update({ 'llmResponseEnd': true });
             }
-            streamable.update({ 'llmResponseEnd': true });
           }
         }
       }
     }
-    if (functionCallingFlowCall != null && functionCallingFlowCall != undefined) {
-      if (functionCallingFlowCall.type == 'internet_search') {
-        followUp = await relevantQuestions(sources, userMessage);
-        streamable.update({ 'followUp': followUp });
+    
+    if (functionCallingFlowCall != null && functionCallingFlowCall !== undefined) {
+      if (typeof functionCallingFlowCall === 'object' && 'type' in functionCallingFlowCall) {
+        if (functionCallingFlowCall.type === 'internet_search') {
+          followUp = await relevantQuestions(sources, userMessage);
+          streamable.update({ 'followUp': followUp });
+        }
       }
     }
     streamable.done({ status: 'done' });

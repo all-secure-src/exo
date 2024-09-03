@@ -7,12 +7,6 @@ const client = new OpenAI({
     apiKey: config.inferenceAPIKey
 });
 
-import Replicate from "replicate";
-
-const replicate = new Replicate({
-    auth: process.env.REPLICATE_API_TOKEN,
-});
-
 const now = new Date();
 // Convert the date to a UTC string
 const utcString = now.toUTCString();
@@ -115,7 +109,7 @@ export async function internet_search(search: string, freshness: string = "") {
         const response = await fetch(`http://localhost:8083/qx/search/alpha/v2`, {
             method: 'POST',
             headers: {
-                'authorization': process.env.QXLABAPI_KEY,
+                'authorization': process.env.US_API_KEY,
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({ search: search, freshness: freshness }),

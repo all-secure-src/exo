@@ -91,7 +91,9 @@ interface Place {
 interface FollowUp {
   choices: {
     message: {
-      content: string;
+      content: {
+        followUp: string[];
+      };
     };
   }[];
 }

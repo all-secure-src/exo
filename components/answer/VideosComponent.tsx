@@ -45,7 +45,6 @@ const IconMinimize = () => (
 interface Video {
     link: string;
     imageUrl: string;
-    title: string;
 }
 
 interface VideosComponentProps {
@@ -234,7 +233,7 @@ const VideosComponent: React.FC<VideosComponentProps> = ({ videos }) => {
                                                 <IconPlay />
                                             </div>
                                         </div>
-                                        <p className="mt-1 text-xs font-medium text-gray-900 dark:text-gray-100 line-clamp-1">{video.title}</p>
+                                        {/* <p className="mt-1 text-xs font-medium text-gray-900 dark:text-gray-100 line-clamp-1">{video.title}</p> */}
                                     </div>
                                 ))}
                             </div>
