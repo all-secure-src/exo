@@ -1,13 +1,10 @@
 // @ts-nocheck
 import { OpenAI } from 'openai';
 import { config } from './config';
+
 const client = new OpenAI({
-    baseURL: config.nonOllamaBaseURL,
+    baseURL: config.llmBaseUrl,
     apiKey: config.inferenceAPIKey
-});
-import { CohereClient } from "cohere-ai";
-const cohere = new CohereClient({
-    token: "pWTp76JUbHZ7b6zbbFteby3L6QsDcRc5Q25p0Omn",
 });
 
 import Replicate from "replicate";
@@ -20,8 +17,23 @@ const now = new Date();
 // Convert the date to a UTC string
 const utcString = now.toUTCString();
 
+function extractNumber(inputStr) {
+    // Regular expression to match the number
+    const regex = /[\d,]+(?:\.\d+)?/;
+
+    // Find the match in the input string
+    const match = inputStr.match(regex);
+
+    if (match) {
+        // Remove commas and convert to a number
+        return parseFloat(match[0].replace(/,/g, ''));
+    } else {
+        return null; // Return null if no number is found
+    }
+}
+
 const MODEL = config.inferenceModel;
-export async function searchPlaces(query: string, location: string) {
+export async function searchPlaces(data) {
     try {
         const response = await fetch('https://google.serper.dev/places', {
             method: 'POST',
@@ -29,12 +41,12 @@ export async function searchPlaces(query: string, location: string) {
                 'X-API-KEY': process.env.SERPER_API,
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ q: query, location: location }),
+            body: JSON.stringify({ q: data.query, location: data.location, gl: data.gl }),
         });
-        const data = await response.json();
+        const data_response = await response.json();
         const normalizedData = {
             type: 'places',
-            places: data.places.map(place => ({
+            places: data_response.places.slice(0, 5).map(place => ({
                 position: place.position,
                 title: place.title,
                 address: place.address,
@@ -50,11 +62,12 @@ export async function searchPlaces(query: string, location: string) {
         };
         return JSON.stringify(normalizedData);
     } catch (error) {
-        console.error('Error searching for places:', error);
+        // console.error('Error searching for places:', error);
         return JSON.stringify({ error: 'Failed to search for places' });
     }
 }
-export async function goShopping(message: string) {
+export async function goShopping(data: string) {
+
     const url = 'https://google.serper.dev/shopping';
     const requestOptions: RequestInit = {
         method: 'POST',
@@ -62,21 +75,31 @@ export async function goShopping(message: string) {
             'X-API-KEY': process.env.SERPER_API as string,
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ "q": message })
+        body: JSON.stringify({ "q": data.query, location: data.location, gl: data.gl })
     };
+    
     try {
         const response = await fetch(url, requestOptions);
         if (!response.ok) {
             throw new Error(`Network response was not ok. Status: ${response.status}`);
         }
         const responseData = await response.json();
+        let shopping_items = [];
+        for (const item of responseData.shopping) {
+            if (extractNumber(item.price) > 0) {
+                shopping_items.push(item);
+            }
+            if (shopping_items.length >= 5) {
+                break;
+            }
+        }
         const shoppingData = {
             type: 'shopping',
-            shopping: responseData.shopping
+            shopping: shopping_items
         };
         return JSON.stringify(shoppingData);
     } catch (error) {
-        console.error('Error fetching shopping data:', error);
+        // console.error('Error fetching shopping data:', error);
         throw error;
     }
 }
@@ -89,7 +112,7 @@ export async function internet_search(search: string, freshness: string = "") {
         freshness = ""
     }
     try {
-        const response = await fetch(`${process.env.QXLABAPI_DOMAIN}/qx/search/alpha/v2`, {
+        const response = await fetch(`http://localhost:8083/qx/search/alpha/v2`, {
             method: 'POST',
             headers: {
                 'authorization': process.env.QXLABAPI_KEY,
@@ -110,86 +133,12 @@ export async function internet_search(search: string, freshness: string = "") {
         };
         return JSON.stringify(normalizedData);
     } catch (error) {
-        console.error('Error searching for internet_search:', error);
+        // console.error('Error searching for internet_search:', error);
         return JSON.stringify({ error: 'Failed to search from internet' });
     }
 }
 
-export async function generate_image(prompt: string) {
-    try {
-        const output = await replicate.run(
-            "ai-forever/kandinsky-2.2:424befb1eae6af8363edb846ae98a11111a39740988baebd279d73fe3ecc92c2",
-            {
-                input: {
-                    width: 1024,
-                    height: 1024,
-                    prompt: prompt,
-                    num_outputs: 2,
-                    num_inference_steps: 75
-                }
-            }
-        );
-
-        const normalizedData = {
-            type: 'generate_image',
-            images: [
-                {
-                    "prompt": prompt,
-                    "index": 1,
-                    "image": output[0]
-                },
-                {
-                    "prompt": prompt,
-                    "index": 2,
-                    "image": output[1]
-                }
-            ]
-        };
-        return JSON.stringify(normalizedData);
-    } catch (error) {
-        console.error('Error searching for generate_image:', error);
-        return JSON.stringify({ error: 'Failed to generate image' });
-    }
-}
-
-export async function generate_human_image(prompt: string) {
-    try {
-        const output = await replicate.run(
-            "ai-forever/kandinsky-2.2:424befb1eae6af8363edb846ae98a11111a39740988baebd279d73fe3ecc92c2",
-            {
-                input: {
-                    width: 1024,
-                    height: 1024,
-                    prompt: prompt,
-                    num_outputs: 2,
-                    num_inference_steps: 75
-                }
-            }
-        );
-
-        const normalizedData = {
-            type: 'generate_human_image',
-            images: [
-                {
-                    "prompt": prompt,
-                    "index": 1,
-                    "image": output[0]
-                },
-                {
-                    "prompt": prompt,
-                    "index": 2,
-                    "image": output[1]
-                },
-            ]
-        };
-        return JSON.stringify(normalizedData);
-    } catch (error) {
-        console.error('Error searching for generate_human_image:', error);
-        return JSON.stringify({ error: 'Failed to generate human image' });
-    }
-}
-
-// pWTp76JUbHZ7b6zbbFteby3L6QsDcRc5Q25p0Omn
+// 6gZDRD0tX3a4jGbSD7KdnhUI4t3NWHsdA4UxqplL
 export async function functionCalling(query: string) {
     try {
         const messages = [
@@ -199,7 +148,8 @@ export async function functionCalling(query: string) {
         
                 # System Preamble
                 ## Basic Rules
-                - You are a powerful tool Omega, an conversational AI trained by QXLABAI to help people. You are augmented by a number of tools, and your job is to use and consume the output of these tools to best help the user. You will see a conversation history between yourself and a user, ending with an utterance from the user. You will then see a specific instruction instructing you what kind of response to generate. When you answer the user's requests, you cite your sources in your answers, according to those instructions.
+                - You are 'Executable UltraSafe AI', an AI Assistant exclusively developed, trained and powered by the scientists and engineers at UltraSafe AI. UltraSafe AI, based in United States of America (USA), specializes in developing and integrating AI technologies to enhance business operations across various industries.
+                - You are a powerful tool Executable UltraSafe AI, an conversational AI trained by UltraSafe AI to help people. You are augmented by a number of tools, and your job is to use and consume the output of these tools to best help the user. You will see a conversation history between yourself and a user, ending with an utterance from the user. You will then see a specific instruction instructing you what kind of response to generate. When you answer the user's requests, you cite your sources in your answers, according to those instructions.
                 - Only use the selected tools when you find that these tools can help the user by providing better references in this situation. As these tools are very costly to run, we shouldn't waste our money when we actually don't need these tools. Otherwise, choose 'directly_answer'.
         
                 ## Knowledge Cutoff Date
@@ -266,7 +216,7 @@ export async function functionCalling(query: string) {
             },
         ];
         const response = await client.chat.completions.create({
-            model: MODEL,
+            model: config.inferenceModel,
             messages: messages,
             tools: tools,
             tool_choice: "auto",
@@ -276,18 +226,46 @@ export async function functionCalling(query: string) {
         const toolCalls = responseMessage.tool_calls;
         if (toolCalls) {
             return toolCalls;
-        }else{
-            console.log(JSON.stringify(responseMessage))
+        } else {
+            // console.log(JSON.stringify(responseMessage))
         }
     } catch (error) {
-        console.error('Error in functionCalling:', error);
+        // console.error('Error in functionCalling 1:', error);
         return JSON.stringify({ error: 'An error occurred during function calling' });
     }
 }
 
-export async function functionCallingSpecific(query: string) {
+export async function functionCallingSpecific(query: string, histroy: any = []) {
 
     function extractJson(input) {
+        // Array of regular expressions to find JSON data in different patterns
+        const regexArray = [
+            /```json\s*([\s\S]*?)\s*```/, // ```json ... ```
+            /```json\s*([\s\S]*?)\s*<end>/, // ```json ... <end>
+            /<start>\s*([\s\S]*?)\s*<end>/, // <start> ... <end>
+            /<start>\s*([\s\S]*?)\s*```/ // <start> ... ```
+        ];
+
+        // Loop through each regex pattern to find a match
+        for (const regex of regexArray) {
+            const match = input.match(regex);
+            if (match && match[1]) {
+                try {
+                    // Parse the JSON data
+                    const jsonData = JSON.parse(match[1]);
+                    return jsonData;
+                } catch (e) {
+                    // console.error("Failed to parse JSON:", e);
+                    // Continue to the next pattern if parsing fails
+                }
+            }
+        }
+
+        // console.error("No JSON data found");
+        return [];
+    }
+
+    function extractJson2(input) {
         // Regular expression to find JSON data enclosed within triple backticks
         const regex = /```json\s+([\s\S]*?)\s+```/;
         const match = input.match(regex);
@@ -297,37 +275,35 @@ export async function functionCallingSpecific(query: string) {
                 const jsonData = JSON.parse(match[1]);
                 return jsonData;
             } catch (e) {
-                console.error("Failed to parse JSON:", e);
+                // console.error("Failed to parse JSON:", e);
             }
         } else {
-            console.error("No JSON data found");
+            // console.error("No JSON data found");
         }
-        return null;
+        return [];
     }
 
     try {
         let code_start = "```"
         let code_start_single = "`"
-        let prompt = `<BOS_TOKEN><|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|># Safety Preamble
-        The instructions in this section override those in the task description and style guide sections. Don't answer questions that are harmful or immoral.
+        let prompt = `The instructions in this section override those in the task description and style guide sections. Don't answer questions that are harmful or immoral.
         
-        # System Preamble
-        ## Basic Rules
-        - You are a powerful tool Omega, an conversational AI trained by QXLABAI to help people. You are augmented by a number of tools, and your job is to use and consume the output of these tools to best help the user. You will see a conversation history between yourself and a user, ending with an utterance from the user. You will then see a specific instruction instructing you what kind of response to generate. When you answer the user's requests, you cite your sources in your answers, according to those instructions.
+        Basic Rules:
+        - You are 'Executable UltraSafe AI', an AI Assistant exclusively developed, trained and powered by the scientists and engineers at UltraSafe AI. UltraSafe AI, based in USA, specializes in developing and integrating AI technologies to enhance business operations across various industries.
+        - You are a powerful tool 'Executable UltraSafe AI', an conversational AI trained by UltraSafe AI to help people. You are augmented by a number of tools, and your job is to use and consume the output of these tools to best help the user. You will see a conversation history between yourself and a user, ending with an utterance from the user. You will then see a specific instruction instructing you what kind of response to generate. When you answer the user's requests, you cite your sources in your answers, according to those instructions.
         - You can use multiple tools same time.
-        ## Knowledge Cutoff Date
+        - Default Location  - San francisco, USA.
+        - Default Country - United States of America (USA).
+
+        Knowledge Cutoff Date
         - Current date and time: The current date and time is ${utcString}. You can convert it to other time zones as required. Remember that today's date is ${utcString} for any real-time event.
         - Knowledge cutoff: Your last known knowledge cutoff date is 1 October 2023. You will need to use other tools to gather information, events, and news beyond your knowledge cutoff date of 1 October 2023.
         - Remember that today's date is ${utcString} for any real-time event.
 
-        # User Preamble
-        ## Task and Context
+        Task and Context:
         You help people answer their questions and other requests interactively. You will be asked a very wide array of requests on all kinds of topics. You will be equipped with a wide range of search engines or similar tools to help you, which you use to research your answer. You should focus on serving the user's needs as best you can, which will be wide-ranging.
 
-        ## Style Guide
-        Unless the user asks for a different style of answer, you should answer in full sentences, using proper grammar and spelling.
-
-        ## Available Tools
+        Available Tools:
         Here is a list of tools that you have available to you:
 
         ${code_start}python
@@ -339,38 +315,61 @@ export async function functionCallingSpecific(query: string) {
 
         ${code_start}python
         def getTickers(ticker: string) -> List[Dict]:
-            """Get a single market name and stock ticker if the user mentions a public company
+            """Get a single market name and correct stock ticker if the user mentions a public company. Only use getTickers when query related to finence and stock market.
 
             Args:
-            ticker (string): The stock ticker symbol and market name, example NYSE:K or NASDAQ:AAPL
+            ticker (string): The stock ticker symbol and market name, example BTC, NYSE:K or NASDAQ:AAPL
             """
             pass
             ${code_start}
 
         ${code_start}python
-        def searchPlaces(query: string, location: string) -> List[Dict]:
-            """ONLY SEARCH for places using the given query and location.
-
-            Args:
-            query (string): The search query for places
-            location (string): The location to search for places
-            """
-            pass
-            ${code_start}
-
-        ${code_start}python
-        def goShopping(query: string) -> List[Dict]:
+        def goShopping(query: string, location: string, gl: string) -> List[Dict]:
             """Search for shopping items using the given query. It is useful when a user is discussing any product, brand, item, or object.
 
             Args:
-            query (string): The search query for shopping items
+            query (string): The search query for shopping items-
+            location (string): Location and Address. example - San francisco, United States of America (USA).
+            gl (string): Country code, like - ae, us, in, etc.
             """
             pass
-            ${code_start}<|END_OF_TURN_TOKEN|>`;
+            ${code_start}
 
-        prompt += `<|START_OF_TURN_TOKEN|><|USER_TOKEN|>${query}<|END_OF_TURN_TOKEN|>`;
-        prompt += `<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>Write 'Action:' followed by a json-formatted list of actions that you want to perform in order to produce a good response to the user's last input. You can use any of the supplied tools any number of times, but you should aim to execute the minimum number of necessary actions for the input. You should use the ${code_start_single}directly_answer${code_start_single} tool if calling the other tools is unnecessary. The list of actions you want to call should be formatted as a list of json objects, for example:
-        ${code_start}json
+        ${code_start}python
+        def searchPlaces(query: string, location: string, gl: string) -> List[Dict]:
+        query: string, location: string
+            """searchPlaces tool is used to find places at any location using maps. You can find any place using a simple query, location, and country code (gl).
+
+            Args:
+            query (string): The search query for shopping items
+            location (string): Location and Address. example - San francisco, United States of America (USA).
+            gl (string): Country code, like - ae, us, in, etc.
+            """
+            pass
+            ${code_start}
+    
+        \n ## Chat History:\n\n`;
+
+        if (histroy.length > 0){
+            for (let i=0; i < histroy.length; i++){
+                if (histroy[i].role == "user"){
+                    prompt += `User: ${histroy[i].content} \n`;
+                }else{
+                    prompt += `Assistant: ${histroy[i].content} \n`;
+                }
+            }
+        }
+
+        prompt += `User: ${query} \n`;
+
+        prompt += `\n ------ \n\n Importent:
+
+        Tool Selection Rules:
+        - You can use multiple tools when relevant. For example, if a user mentions an item, you can use tools like Shopping for purchasing options and Maps for finding nearby stores. If a user asks about financial data, you can use Ticker to display the stock ticker, and so on.
+        - These tools are designed to enhance the user experience and provide better visibility of services, so try to utilize as many relevant tools as possible.
+
+        \n\nWrite 'Action: <start> ${code_start}json' followed by a json-formatted list of tools that you want to perform in order to produce a good response to the user's last input. You can use multiple upto 4 tools at a time. You can use ${code_start_single}directly_answer${code_start_single} tools if calling the other tools is unnecessary. \n The json list of action you want to call should be formatted as a list of json objects and end with '<end>', for example:
+        Action: <start> ${code_start}json
         [
             {
                 "tool_name": title of the tool in the specification,
@@ -379,39 +378,38 @@ export async function functionCallingSpecific(query: string) {
             {
                 "tool_name": title of the tool in the specification,
                 "parameters": a dict of parameters to input into the tool as they are defined in the specs, or {} if it takes no parameters
-            }
-        ]${code_start}<|END_OF_TURN_TOKEN|><|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>`;
+            },
+            // Other tools ...
+        ]${code_start}<end>`;
 
-        const response = await cohere.generate({
-
-            model: "command-r-plus",
-
-            prompt: prompt,
-
-            maxTokens: 2000,
-
+        const response = await client.chat.completions.create({
+            model: config.inferenceModel,
+            messages: [
+                {
+                    role: "user",
+                    content: prompt,
+                },
+            ],
+            max_tokens: 2000,
             temperature: 0.3,
-
-            k: 0,
-
-            stopSequences: [],
-
-            returnLikelihoods: "NONE"
-
         });
 
-        const selected_tools = extractJson(response.generations[0].text);
+        let selected_tools = extractJson(response.choices[0].message.content);
 
-        // console.log(`Selected Tools: ${JSON.stringify(selected_tools)}`);
+        if (selected_tools.length == 0) {
+            selected_tools = extractJson2(response.choices[0].message.content);
+        }
 
-        if (selected_tools[0]['tool_name'] != 'directly_answer') {
+        if (selected_tools.length == 0) {
+            // continue
+        } else if (selected_tools[0]['tool_name'] != 'directly_answer') {
             const availableFunctions = {
                 getTickers: getTickers,
-                searchPlaces: searchPlaces,
                 goShopping: goShopping,
+                searchPlaces: searchPlaces,
                 internet_search: internet_search,
             };
-
+            let selected_tool_list = [];
             for (const toolCall of selected_tools) {
                 const functionName = toolCall.tool_name;
                 const functionToCall = availableFunctions[functionName];
@@ -420,27 +418,60 @@ export async function functionCallingSpecific(query: string) {
                 try {
                     if (functionName === 'getTickers') {
                         functionResponse = await functionToCall(functionArgs.ticker);
-                    } else if (functionName === 'searchPlaces') {
-                        functionResponse = await functionToCall(functionArgs.query, functionArgs.location);
+                        selected_tool_list.push(JSON.parse(functionResponse));
                     } else if (functionName === 'goShopping') {
-                        functionResponse = await functionToCall(functionArgs.query);
+                        functionResponse = await functionToCall(functionArgs);
+                        selected_tool_list.push(JSON.parse(functionResponse));
+                    } else if (functionName === 'searchPlaces') {
+                        functionResponse = await functionToCall(functionArgs);
+                        selected_tool_list.push(JSON.parse(functionResponse));
+                    } else {
+                        continue
                     }
-                    return JSON.parse(functionResponse);
                 } catch (error) {
-                    console.error(`Error calling function - (2) ${functionName}:`, error);
-                    return JSON.stringify({ error: `Failed to call function ${functionName}` });
+                    // console.error(`Error calling function - (2) ${functionName}:`, error);
+                    // return JSON.stringify({ error: `Failed to call function ${functionName}` });
                 }
             }
+            return selected_tool_list;
         }
     } catch (error) {
-        console.error('Error in functionCalling:', error);
+        // console.error('Error in functionCalling Specific:', error);
         return JSON.stringify({ error: 'An error occurred during function calling' });
     }
 }
 
-export async function functionCallingReference(query: string) {
+export async function functionCallingReference(query: string, histroy: any = []) {
 
     function extractJson(input) {
+        // Array of regular expressions to find JSON data in different patterns
+        const regexArray = [
+            /```json\s*([\s\S]*?)\s*```/, // ```json ... ```
+            /```json\s*([\s\S]*?)\s*<end>/, // ```json ... <end>
+            /<start>\s*([\s\S]*?)\s*<end>/, // <start> ... <end>
+            /<start>\s*([\s\S]*?)\s*```/ // <start> ... ```
+        ];
+
+        // Loop through each regex pattern to find a match
+        for (const regex of regexArray) {
+            const match = input.match(regex);
+            if (match && match[1]) {
+                try {
+                    // Parse the JSON data
+                    const jsonData = JSON.parse(match[1]);
+                    return jsonData;
+                } catch (e) {
+                    // console.error("Failed to parse JSON:", e);
+                    // Continue to the next pattern if parsing fails
+                }
+            }
+        }
+
+        // console.error("No JSON data found");
+        return [];
+    }
+
+    function extractJson2(input) {
         // Regular expression to find JSON data enclosed within triple backticks
         const regex = /```json\s+([\s\S]*?)\s+```/;
         const match = input.match(regex);
@@ -450,44 +481,35 @@ export async function functionCallingReference(query: string) {
                 const jsonData = JSON.parse(match[1]);
                 return jsonData;
             } catch (e) {
-                console.error("Failed to parse JSON:", e);
+                // console.error("Failed to parse JSON:", e);
             }
         } else {
-            console.error("No JSON data found");
+            // console.error("No JSON data found");
         }
-        return null;
+        return [];
     }
 
     try {
         let code_start = "```"
         let code_start_single = "`"
-        let prompt = `<|begin_of_text|><|start_header_id|>SYSTEM<|end_header_id|>\n\n# Safety Preamble
-        The instructions in this section override those in the task description and style guide sections. Don't answer questions that are harmful or immoral.
-
-        # System Preamble
-        ## Basic Rules
-        - You are a powerful tool Omega, an conversational AI trained by QXLABAI to help people. You are augmented by a number of tools, and your job is to use and consume the output of these tools to best help the user. You will see a conversation history between yourself and a user, ending with an utterance from the user. You will then see a specific instruction instructing you what kind of response to generate. When you answer the user's requests, you cite your sources in your answers, according to those instructions.
-        - Only use the selected tools when you find that these tools can help the user by providing better references in this situation. As these tools are very costly to run, we shouldn't waste our money when we actually don't need these tools. Otherwise, choose 'directly_answer'.
-        - You can use multiple tools same time.
-
-        ## Knowledge Cutoff Date
-        - Current date and time: The current date and time is ${utcString}. You can convert it to other time zones as required. Remember that today's date is ${utcString} for any real-time event.
+        let prompt = `- You are 'Executable UltraSafe AI', an AI Assistant exclusively developed, trained and powered by the scientists and engineers at UltraSafe AI. UltraSafe AI, based in United States of America (USA), specializes in developing and integrating AI technologies to enhance business operations across various industries.
+        - You are a powerful tool Executable UltraSafe AI, an conversational AI trained by UltraSafe AI to help people. You are augmented by a number of tools, and your job is to use and consume the output of these tools to best help the user. You will see a conversation history between yourself and a user, ending with an utterance from the user. You will then see a specific instruction instructing you what kind of response to generate. When you answer the user's requests, you cite your sources in your answers, according to those instructions.
+        - You can use multiple tools at a time.
+        - As hi_en (Hinglish) and hi (Hindi) are different languages, treat them as distinct. If the user requests Hinglish and Hindi, then provide both - [hi_en, hi], not just one.
+        
+        Knowledge Cutoff Date:
+        - Current date and time: The current date and time is ${utcString}. You can convert it to other time zones as required.
         - Knowledge cutoff: Your last known knowledge cutoff date is 1 October 2023. You will need to use other tools to gather information, events, and news beyond your knowledge cutoff date of 1 October 2023.
-        - Remember that today's date is ${utcString} for any real-time event.
+        
+        Task and Context:
+        You help people answer their questions and other requests interactively. You will be asked a very wide array of requests on all kinds of topics. You will be equipped with a wide range of youtube videos engines or similar tools to help you, which you use to research your answer. You should focus on serving the user's needs as best you can, which will be wide-ranging.
 
-        # User Preamble
-        ## Task and Context
-        You help people answer their questions and other requests interactively. You will be asked a very wide array of requests on all kinds of topics. You will be equipped with a wide range of search engines or similar tools to help you, which you use to research your answer. You should focus on serving the user's needs as best you can, which will be wide-ranging.
-
-        ## Style Guide
-        Unless the user asks for a different style of answer, you should answer in full sentences, using proper grammar and spelling.
-
-        ## Available Tools
+        Available Tools:
         Here is a list of tools that you have available to you:
 
         ${code_start}python
         def directly_answer() -> List[Dict]:
-            """Calls a standard (un-augmented) AI chatbot to generate a response given the conversation history
+            """An AI-powered large language model (LLM) that can answer general questions, open-ended questions, closed-ended questions, mathematical problems, coding and programming queries, as well as complex text-based questions.
             """
             pass
             ${code_start}
@@ -497,25 +519,32 @@ export async function functionCallingReference(query: string) {
             """Search for YouTube videos based on a user-provided query. This tool is helpful for finding videos relevant to specific topics, interests, or needs, such as "How can we make tea?" or "How to learn swimming." It is suitable for queries related to experiments, processes, and experiences. However, it should not be used for queries like "solve 2+2" or "write an essay on India.", etc.
 
             Args:
-            query(string): The search query to find YouTube videos.
+            query(string): The search query to find YouTube videos. Query in the same language in which user asking the answer..
             """
             pass
             ${code_start}
 
-        ${code_start}python
-        def google_images(query: string) -> List[Dict]:
-            """Search for images via Google Images based on a user-provided query. This is useful for obtaining visual content related to events, culture, or creative purposes. However, it is only suitable when you need an image as a reference and not suitable for demonstrating processes and learnings.
+        \n ## Chat History:\n\n`;
 
-            Args:
-            query(string): The search query to find images on Google Images.
-            """
-            pass
-            ${code_start}
-            
-        ## Nest Steps:
-        - Only use the selected tools when you find that these tools can help the user by providing better references in this situation. As these tools are very costly to run, we shouldn't waste our money when we actually don't need these tools. Otherwise, choose 'directly_answer'.
-        - Write 'Action:' followed by a json-formatted list of actions that you want to perform in order to produce a good response to the user's last input. You can use any of the supplied tools any number of times, but you should aim to execute the minimum number of necessary actions for the input. You should use the ${code_start_single}directly_answer${code_start_single} tool if calling the other tools is unnecessary. The list of actions you want to call should be formatted as a list of json objects, for example:
-        ${code_start}json
+        if (histroy.length > 0){
+            for (let i=0; i < histroy.length; i++){
+                if (histroy[i].role == "user"){
+                    prompt += `User: ${histroy[i].content} \n`;
+                }else{
+                    prompt += `Assistant: ${histroy[i].content} \n`;
+                }
+            }
+        }
+
+        prompt += `User: ${query} \n`;
+
+        prompt += `\n ------ \n\n Importent:
+
+        Tool Selection Rules:
+        - You can use multiple tools, up to 2, when necessary.
+        
+        \n\nWrite 'Action: <start> ${code_start}json' followed by a json-formatted list of tools that you want to perform in order to produce a good response to the user's last input. You can use multiple upto 4 tools at a time. You can use ${code_start_single}directly_answer${code_start_single} tools if calling the other tools is unnecessary. \n The json list of action you want to call should be formatted as a list of json objects and end with '<end>', for example:
+        Action: <start> ${code_start}json
         [
             {
                 "tool_name": title of the tool in the specification,
@@ -524,50 +553,78 @@ export async function functionCallingReference(query: string) {
             {
                 "tool_name": title of the tool in the specification,
                 "parameters": a dict of parameters to input into the tool as they are defined in the specs, or {} if it takes no parameters
-            }
-        ]${code_start}
-        <|eot_id|>`;
+            },
+            // Other tools ...
+        ]${code_start}<end>`;
 
-        prompt += `<|start_header_id|>USER<|end_header_id|>\n\n${query}<|eot_id|>`;
-        prompt += `<|start_header_id|>ASSISTANT<|end_header_id|>\n\n`;
-
-        const response = await cohere.generate({
-
-            model: "command-r-plus",
-
-            prompt: prompt,
-
-            maxTokens: 2000,
-
+        const response = await client.chat.completions.create({
+            model: config.inferenceModel,
+            messages: [
+                {
+                    role: "user",
+                    content: prompt,
+                },
+            ],
+            max_tokens: 256,
             temperature: 0.3,
-
-            k: 0,
-
-            stopSequences: [],
-
-            returnLikelihoods: "NONE"
-
         });
 
-        const selected_tools = extractJson(response.generations[0].text);
+        let selected_tools = extractJson(response.choices[0].message.content);
+        if (selected_tools.length == 0) {
+            selected_tools = extractJson2(response.choices[0].message.content);
+        }
 
-        // console.log(`Selected Tools: ${JSON.stringify(selected_tools)}`);
-
-        if (selected_tools[0]['tool_name'] != 'directly_answer') {
+        // console.log("selected_tools ===== ", JSON.stringify(selected_tools));
+        if (selected_tools.length > 0) {
+            if (selected_tools[0]['tool_name'] != 'directly_answer') {
+                return {
+                    type: selected_tools[0]['tool_name'],
+                    parameters: selected_tools[0].parameters
+                };
+            }
+        } else {
             return {
-                type: selected_tools[0]['tool_name'],
-                parameters: selected_tools[0].parameters
+                type: "directly_answer",
+                parameters: {}
             };
         }
     } catch (error) {
-        console.error('Error in functionCalling:', error);
+        // console.error('Error in functionCalling Reference:', error);
         return JSON.stringify({ error: 'An error occurred during function calling' });
     }
 }
 
-export async function functionCallingFlow(query: string) {
+export async function functionCallingFlow(query: string, histroy: any = []) {
 
     function extractJson(input) {
+        // Array of regular expressions to find JSON data in different patterns
+        const regexArray = [
+            /```json\s*([\s\S]*?)\s*```/, // ```json ... ```
+            /```json\s*([\s\S]*?)\s*<end>/, // ```json ... <end>
+            /<start>\s*([\s\S]*?)\s*<end>/, // <start> ... <end>
+            /<start>\s*([\s\S]*?)\s*```/ // <start> ... ```
+        ];
+
+        // Loop through each regex pattern to find a match
+        for (const regex of regexArray) {
+            const match = input.match(regex);
+            if (match && match[1]) {
+                try {
+                    // Parse the JSON data
+                    const jsonData = JSON.parse(match[1]);
+                    return jsonData;
+                } catch (e) {
+                    // console.error("Failed to parse JSON:", e);
+                    // Continue to the next pattern if parsing fails
+                }
+            }
+        }
+
+        // console.error("No JSON data found");
+        return [];
+    }
+
+    function extractJson2(input) {
         // Regular expression to find JSON data enclosed within triple backticks
         const regex = /```json\s+([\s\S]*?)\s+```/;
         const match = input.match(regex);
@@ -577,137 +634,34 @@ export async function functionCallingFlow(query: string) {
                 const jsonData = JSON.parse(match[1]);
                 return jsonData;
             } catch (e) {
-                console.error("Failed to parse JSON:", e);
+                // console.error("Failed to parse JSON:", e);
             }
         } else {
-            console.error("No JSON data found");
+            // console.error("No JSON data found");
         }
-        return null;
+        return [];
     }
 
     try {
-        // let tools = [
-        //     {
-        //         "name": "internet_search",
-        //         "description": "Enables searching for any real-time information, any specific piece of information, any information after 2022, browsing the internet, retrieving data from Google, and finding facts, details, and information related to anything in the world based on a given prompt.",
-        //         "parameter_definitions": {
-        //             "query": {
-        //                 "description": "Query to search the internet with",
-        //                 "type": 'str',
-        //                 "required": true
-        //             }
-        //         }
-        //     },
-        //     {
-        //         'name': "directly_answer",
-        //         "description": "Calls a standard (un-augmented) AI chatbot to generate a response given the conversation history",
-        //         'parameter_definitions': {}
-        //     },
-        //     {
-        //         "name": "code_solutions",
-        //         "description": "It can provide any type of code solutions, whether related to real-time information or not. It can solve all types of coding problems under any condition, but it is only for coding solutions.",
-        //         "parameter_definitions": {
-        //             "languge": {
-        //                 "description": "name of the programming language. by default - python",
-        //                 "type": 'str',
-        //                 "required": True
-        //             }
-        //         }
-        //     },
-        //     {
-        //         "name": "math_solutions",
-        //         "description": "It can provide solutions for any type of math-related problem. It can solve all kinds of math problems under any condition, but it is designed exclusively for math solutions.",
-        //         "parameter_definitions": {
-        //             "complexity": {
-        //                 "description": "Define complexity of the math question. you can only choose from - [basic,intermediate,advanced,expert,master]",
-        //                 "type": 'str',
-        //                 "required": True
-        //             }
-        //         }
-        //     },
-        //     {
-        //         "name": "generate_image",
-        //         "description": "Generate an image based on a given prompt for general purposes, but not specialized in any specific category.",
-        //         "parameter_definitions": {
-        //             "prompt": {
-        //                 "description": "The prompt for image generation",
-        //                 "type": "string",
-        //                 "required": true
-        //             }
-        //         }
-        //     },
-        //     {
-        //         "name": "generate_human_image",
-        //         "description": "Generate an image of human beings based on a given prompt. It is specialized in human image generation, focusing specifically on girls, boys, women, men, and children's images.",
-        //         "parameter_definitions": {
-        //             "prompt": {
-        //                 "description": "The prompt for image generation",
-        //                 "type": "string",
-        //                 "required": true
-        //             }
-        //         }
-        //     },
-        //     {
-        //         "name": "getTickers",
-        //         "description": "Get a single market name and stock ticker if the user mentions a public company",
-        //         "parameter_definitions": {
-        //             "ticker": {
-        //                 "description": "The stock ticker symbol and market name, example NYSE:K or NASDAQ:AAPL",
-        //                 "type": "string",
-        //                 "required": true
-        //             }
-        //         }
-        //     },
-        //     {
-        //         "name": "searchPlaces",
-        //         "description": "ONLY SEARCH for places using the given query and location",
-        //         "parameter_definitions": {
-        //             "query": {
-        //                 "description": "The search query for places",
-        //                 "type": "string",
-        //                 "required": true
-        //             },
-        //             "location": {
-        //                 "description": "The location to search for places",
-        //                 "type": "string",
-        //                 "required": true
-        //             }
-        //         }
-        //     },
-        //     {
-        //         "name": "goShopping",
-        //         "description": "Search for shopping items using the given query",
-        //         "parameter_definitions": {
-        //             "query": {
-        //                 "description": "The search query for shopping items",
-        //                 "type": "string",
-        //                 "required": true
-        //             }
-        //         }
-        //     }
-        // ];
-
         let code_start = "```"
         let code_start_single = "`"
-        let prompt = `<BOS_TOKEN><|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|># Safety Preamble
+        let prompt = `# Safety Preamble
         The instructions in this section override those in the task description and style guide sections. Don't answer questions that are harmful or immoral.
 
         # System Preamble
         ## Basic Rules
-        - You are a powerful tool Omega, an conversational AI trained by QXLABAI to help people. You are augmented by a number of tools, and your job is to use and consume the output of these tools to best help the user. You will see a conversation history between yourself and a user, ending with an utterance from the user. You will then see a specific instruction instructing you what kind of response to generate. When you answer the user's requests, you cite your sources in your answers, according to those instructions.
-        - You can use multiple tools same time.
-
+        - You are 'Executable UltraSafe AI', an AI Assistant exclusively developed, trained and powered by the scientists and engineers at UltraSafe AI. UltraSafe AI, based in United States of America (USA), specializes in developing and integrating AI technologies to enhance business operations across various industries.
+        - You are a powerful tool Executable UltraSafe AI, an conversational AI trained by UltraSafe AI to help people. You are augmented by a number of tools, and your job is to use and consume the output of these tools to best help the user. You will see a conversation history between yourself and a user, ending with an utterance from the user. You will then see a specific instruction instructing you what kind of response to generate. When you answer the user's requests, you cite your sources in your answers, according to those instructions.
+        - You can use multiple tools at a time.
+        - As hi_en (Hinglish) and hi (Hindi) are different languages, treat them as distinct. If the user requests Hinglish and Hindi, then provide both - [hi_en, hi], not just one.
+        
         ## Knowledge Cutoff Date
-        - Current date and time: The current date and time is ${utcString}. You can convert it to other time zones as required. Remember that today's date is ${utcString} for any real-time event.
+        - Current date and time: The current date and time is ${utcString}. You can convert it to other time zones as required.
         - Knowledge cutoff: Your last known knowledge cutoff date is 1 October 2023. You will need to use other tools to gather information, events, and news beyond your knowledge cutoff date of 1 October 2023.
-        - Remember that today's date is ${utcString} for any real-time event.
-
+        
         # User Preamble
         ## Task and Context
         You help people answer their questions and other requests interactively. You will be asked a very wide array of requests on all kinds of topics. You will be equipped with a wide range of search engines or similar tools to help you, which you use to research your answer. You should focus on serving the user's needs as best you can, which will be wide-ranging.
-
-        ## Style Guide
-        Unless the user asks for a different style of answer, you should answer in full sentences, using proper grammar and spelling.
 
         ## Available Tools
         Here is a list of tools that you have available to you:
@@ -724,87 +678,60 @@ export async function functionCallingFlow(query: string) {
             ${code_start}
         
         ${code_start}python
-            def news_search(query: str, freshness: Optional[str] = None) -> List[Dict]:
-                """Enables searching for any real-time information, any specific piece of information, any information after 2022, browsing the internet, retrieving data from Google, and finding facts, details, and information related to anything in the world based on a given prompt.
-            
-                Args:
-                    query (str): Query to search the internet with
-                    freshness (Optional[str]): freshness is specifies the recency of search results, including "24h" for the last 24 hours, "7d" for the past 7 days, and "30d" for the last 30 days. Leaving it empty retrieves results from any time period.
-                """
-                pass
-                ${code_start}
+        def news_search(query: str, freshness: Optional[str] = None) -> List[Dict]:
+            """Enables searching for any real-time information, any specific piece of information, any information after 2022, browsing the internet, retrieving data from Google, and finding facts, details, and information related to anything in the world based on a given prompt.
+        
+            Args:
+                query (str): Query to search the internet with
+                freshness (Optional[str]): freshness is specifies the recency of search results, including "24h" for the last 24 hours, "7d" for the past 7 days, and "30d" for the last 30 days. Leaving it empty retrieves results from any time period.
+            """
+            pass
+            ${code_start}
 
         ${code_start}python
         def directly_answer() -> List[Dict]:
-            """Calls a standard (un-augmented) AI chatbot to generate a response given the conversation history
+            """An AI-powered large language model (LLM) that can answer general questions, open-ended questions, closed-ended questions, mathematical problems, coding and programming queries, as well as complex text-based questions.
             """
             pass
             ${code_start}
-
-        ${code_start}python
-        def code_solutions(languge: str) -> List[Dict]:
-            """It can provide any type of code solutions, whether related to real-time information or not. It can solve all types of coding problems under any condition, but it is only for coding solutions.
-        
-            Args:
-                languge (str): name of the programming language. by default - python
-            """
-            pass
-            ${code_start}
-        
-        ${code_start}python
-        def math_solutions(complexity: str) -> List[Dict]:
-            """It can provide solutions for any type of math-related problem. It can solve all kinds of math problems under any condition, but it is designed exclusively for math solutions.
-        
-            Args:
-                complexity (str): Define complexity of the math question. you can only choose from - [basic,intermediate,advanced,expert,master]
-            """
-            pass
-        ${code_start}
 
         ${code_start}python
         def generate_image(prompt: string) -> List[Dict]:
-            """Generate an image based on a given prompt for general purposes, but not specialized in any specific category.
+            """Generate an image based on a given english language prompt for all type of images.
 
             Args:
-            prompt (string): The prompt for image generation
+            prompt (string): Prompt for image generation in english language only. and only proide safe prompt. Do not use nude, political, sex, kiss, bed, etc. words during in prompt at all.
             """
             pass
             ${code_start}
+            
+        \n ## Chat History:\n\n`;
+
+        if (histroy.length > 0){
+            for (let i=0; i < histroy.length; i++){
+                if (histroy[i].role == "user"){
+                    prompt += `User: ${histroy[i].content} \n`;
+                }else{
+                    prompt += `Assistant: ${histroy[i].content} \n`;
+                }
+            }
+        }
+
+        prompt += `User: ${query} \n`;
+
+        prompt += `\n ------ \n\n ## Importent
+
+        ## Tool Selection Rules:
+        - Only use the 'internet_search' tool when the user is asking for information about real-time data, data after October 1, 2023, specific dates of past and future, current, today and future data, future decisions, and forecasting, etc., to provide correct and accurate answers. For any kind of general, programming, math, reasoning and simple task, you can answer directly.
+        - You can use 'directly_answer' at the end to utilize responses from other tools to generate better answers.
+        - Always understand the user's intent when they ask for an image, visual element, or text-based answer. It is important to provide the correct output to the users.
+        - You can use multiple tools, up to 4, when necessary. For instance:
+            + If a question is related to finance and requires both stock data and internet data, use public_listed_stock_ticker and internet_search.
+            + For news-related queries, use news_search (e.g., "What's the latest news on the elections?").
+            + This approach applies to other scenarios as well.
         
-        ${code_start}python
-        def generate_human_image(prompt: string) -> List[Dict]:
-            """Generate an image of human beings based on a given prompt. It is specialized in human image generation, focusing specifically on girls, boys, women, men, and children's images.
-
-            Args:
-            prompt (string): The prompt for image generation
-            """
-            pass
-            ${code_start}
-
-        ${code_start}python
-        def searchPlaces(query: string, location: string) -> List[Dict]:
-            """ONLY SEARCH for places using the given query and location
-
-            Args:
-            query (string): The search query for places
-            location (string): The location to search for places
-            """
-            pass
-            ${code_start}
-
-        ${code_start}python
-        def goShopping(query: string) -> List[Dict]:
-            """Search for shopping items using the given query. It is useful when a user is discussing any product, brand, item, or object.
-
-            Args:
-            query (string): The search query for shopping items
-            """
-            pass
-            ${code_start}<|END_OF_TURN_TOKEN|>`;
-
-        prompt += `<|START_OF_TURN_TOKEN|><|USER_TOKEN|>${query}<|END_OF_TURN_TOKEN|>`;
-        prompt += `<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>Write 'Action:' followed by a json-formatted list of actions that you want to perform in order to produce a good response to the user's last input. You can use any of the supplied tools any number of times, but you should aim to execute the minimum number of necessary actions for the input. You should use the ${code_start_single}directly_answer${code_start_single} tool if calling the other tools is unnecessary. The list of actions you want to call should be formatted as a list of json objects, for example:
-        ${code_start}json
+        \n\nWrite 'Action: <start> ${code_start}json' followed by a json-formatted list of tools that you want to perform in order to produce a good response to the user's last input. You can use multiple upto 4 tools at a time. You can use ${code_start_single}directly_answer${code_start_single} tools if calling the other tools is unnecessary. \n The json list of action you want to call should be formatted as a list of json objects and end with '<end>', for example:
+        Action: <start> ${code_start}json
         [
             {
                 "tool_name": title of the tool in the specification,
@@ -813,45 +740,45 @@ export async function functionCallingFlow(query: string) {
             {
                 "tool_name": title of the tool in the specification,
                 "parameters": a dict of parameters to input into the tool as they are defined in the specs, or {} if it takes no parameters
-            }
-        ]${code_start}<|END_OF_TURN_TOKEN|><|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>`;
+            },
+            // Other tools ...
+            {
+                "tool_name": directly_answer,
+                "parameters": { category: '...', answer_language: '...' }
+            },
+        ]${code_start}<end>`;
 
-        const response = await cohere.generate({
-
-            model: "command-r-plus",
-
-            prompt: prompt,
-
-            maxTokens: 2000,
-
+        const response = await client.chat.completions.create({
+            model: config.inferenceModel,
+            messages: [
+                {
+                    role: "user",
+                    content: prompt,
+                },
+            ],
+            max_tokens: 512,
             temperature: 0.3,
-
-            k: 0,
-
-            stopSequences: [],
-
-            returnLikelihoods: "NONE"
-
         });
 
-        const selected_tools = extractJson(response.generations[0].text);
+        // console.log("response.choices[0].message.content --- ", response.choices[0].message.content);
 
-        if (selected_tools[0]['tool_name'] == 'code_solutions') {
+        let selected_tools = extractJson(response.choices[0].message.content);
+
+        if (selected_tools.length == 0) {
+            selected_tools = extractJson2(response.choices[0].message.content);
+        }
+
+        if (selected_tools.length == 0) {
             return {
-                type: selected_tools[0]['tool_name'],
-                parameters: selected_tools[0].parameters
-            };
-        } else if (selected_tools[0]['tool_name'] == 'math_solutions') {
-            return {
-                type: selected_tools[0]['tool_name'],
-                parameters: selected_tools[0].parameters
+                type: "directly_answer",
+                parameters: {}
             };
         } else if (selected_tools[0]['tool_name'] == 'news_search') {
             return {
                 type: selected_tools[0]['tool_name'],
                 parameters: selected_tools[0].parameters
             };
-        } else if (selected_tools[0]['tool_name'] == 'generate_human_image') {
+        } else if (selected_tools[0]['tool_name'] == 'internet_search') {
             return {
                 type: selected_tools[0]['tool_name'],
                 parameters: selected_tools[0].parameters
@@ -862,49 +789,19 @@ export async function functionCallingFlow(query: string) {
                 parameters: selected_tools[0].parameters
             };
         } else if (selected_tools[0]['tool_name'] != 'directly_answer') {
-            const availableFunctions = {
-                getTickers: getTickers,
-                searchPlaces: searchPlaces,
-                goShopping: goShopping,
-                internet_search: internet_search,
-                generate_image: generate_image,
-                generate_human_image: generate_human_image,
+            // console.log(selected_tools);
+            return {
+                type: selected_tools[0]['tool_name'],
+                parameters: selected_tools[0].parameters
             };
 
-            for (const toolCall of selected_tools) {
-                const functionName = toolCall.tool_name;
-                const functionToCall = availableFunctions[functionName];
-                const functionArgs = toolCall.parameters;
-                let functionResponse;
-                try {
-                    if (functionName === 'searchPlaces') {
-                        functionResponse = await functionToCall(functionArgs.query, functionArgs.location);
-                    } else if (functionName === 'goShopping') {
-                        functionResponse = await functionToCall(functionArgs.query);
-                    } else if (functionName === 'internet_search') {
-                        return {
-                            type: 'internet_search',
-                            parameters: functionArgs,
-                        };
-                    } else if (functionName === 'generate_image') {
-                        functionResponse = await functionToCall(functionArgs.prompt);
-                    } else if (functionName === 'generate_human_image') {
-                        functionResponse = await functionToCall(functionArgs.prompt);
-                    }
-
-                    return JSON.parse(functionResponse);
-                } catch (error) {
-                    console.error(`Error calling function - (3) ${functionName}:`, error);
-                    return JSON.stringify({ error: `Failed to call function ${functionName}` });
-                }
-            }
         } else {
             return {
                 type: 'directly_answer'
             };
         }
     } catch (error) {
-        console.error('Error in functionCalling:', error);
+        // console.error('Error in functionCalling Flow:', error);
         return JSON.stringify({ error: 'An error occurred during function calling' });
     }
 }

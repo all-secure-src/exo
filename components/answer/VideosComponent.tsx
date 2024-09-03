@@ -1,27 +1,83 @@
-// 1. Import the necessary hooks from the 'react' library
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { IconPlus, IconClose } from '@/components/ui/icons';
-// 2. Define the 'Video' interface to represent a video object
+
+// Custom SVG icons
+const IconPlay = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+    </svg>
+);
+
+const IconPause = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="6" y="4" width="4" height="16"></rect>
+        <rect x="14" y="4" width="4" height="16"></rect>
+    </svg>
+);
+
+const IconVolume2 = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+    </svg>
+);
+
+const IconVolumeX = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+        <line x1="23" y1="9" x2="17" y2="15"></line>
+        <line x1="17" y1="9" x2="23" y2="15"></line>
+    </svg>
+);
+
+const IconMaximize = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+    </svg>
+);
+
+const IconMinimize = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"></path>
+    </svg>
+);
+
 interface Video {
     link: string;
     imageUrl: string;
+    title: string;
 }
-// 3. Define the 'VideosComponentProps' interface to specify the props for the 'VideosComponent'
+
 interface VideosComponentProps {
     videos: Video[];
 }
-// 4. Define the 'VideosComponent' functional component that accepts 'VideosComponentProps'
+
 const VideosComponent: React.FC<VideosComponentProps> = ({ videos }) => {
-    // 5. Declare state variables using the 'useState' hook
-    const [showMore, setShowMore] = useState(false);
-    const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
+    const [expanded, setExpanded] = useState(false);
+    const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
     const [loadedImages, setLoadedImages] = useState<boolean[]>([]);
+    const [isPlaying, setIsPlaying] = useState(false);
     const [isFullScreen, setIsFullScreen] = useState(false);
-    // 6. Use the 'useEffect' hook to initialize the 'loadedImages' state based on the number of videos
+    const [isMuted, setIsMuted] = useState(false);
+    const [progress, setProgress] = useState(0);
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const playerRef = useRef<HTMLDivElement>(null);
+
+    const itemsPerRow = {
+        mobile: 3,
+        tablet: 4,
+        laptop: 6,
+    };
+    const defaultRows = {
+        mobile: 2,
+        tablet: 2,
+        laptop: 1,
+    };
+
     useEffect(() => {
         setLoadedImages(Array(videos.length).fill(false));
     }, [videos]);
-    // 7. Define the 'handleImageLoad' function to update the 'loadedImages' state when an image is loaded
+
     const handleImageLoad = (index: number) => {
         setLoadedImages((prevLoadedImages) => {
             const updatedLoadedImages = [...prevLoadedImages];
@@ -29,20 +85,89 @@ const VideosComponent: React.FC<VideosComponentProps> = ({ videos }) => {
             return updatedLoadedImages;
         });
     };
-    // 8. Define the 'handleVideoClick' function to set the 'selectedVideo' state when a video is clicked
-    const handleVideoClick = (link: string) => {
-        setSelectedVideo(link);
+
+    const handleVideoClick = (video: Video) => {
+        setSelectedVideo(video);
+        setIsPlaying(true);
     };
-    // 9. Define the 'handleCloseModal' function to close the video modal and exit full-screen mode
+
     const handleCloseModal = () => {
         setSelectedVideo(null);
+        setIsPlaying(false);
         setIsFullScreen(false);
     };
-    // 10. Define the 'toggleFullScreen' function to toggle the full-screen mode
-    const toggleFullScreen = () => {
-        setIsFullScreen(!isFullScreen);
+
+    const togglePlay = () => {
+        if (videoRef.current) {
+            if (isPlaying) {
+                videoRef.current.pause();
+            } else {
+                videoRef.current.play();
+            }
+            setIsPlaying(!isPlaying);
+        }
     };
-    // 11. Define the 'VideosSkeleton' component to display a loading skeleton while videos are loading
+
+    const toggleFullScreen = () => {
+        if (playerRef.current) {
+            if (!document.fullscreenElement) {
+                playerRef.current.requestFullscreen();
+                setIsFullScreen(true);
+            } else {
+                document.exitFullscreen();
+                setIsFullScreen(false);
+            }
+        }
+    };
+
+    const toggleMute = () => {
+        if (videoRef.current) {
+            videoRef.current.muted = !isMuted;
+            setIsMuted(!isMuted);
+        }
+    };
+
+    const handleProgress = () => {
+        if (videoRef.current) {
+            const progress = (videoRef.current.currentTime / videoRef.current.duration) * 100;
+            setProgress(progress);
+        }
+    };
+
+    const handleProgressBarClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (videoRef.current) {
+            const progressBar = e.currentTarget;
+            const clickPosition = (e.clientX - progressBar.getBoundingClientRect().left) / progressBar.offsetWidth;
+            videoRef.current.currentTime = clickPosition * videoRef.current.duration;
+        }
+    };
+
+    const toggleExpand = () => {
+        setExpanded(!expanded);
+    };
+
+    const getDefaultShownVideos = () => {
+        if (typeof window !== 'undefined') {
+            if (window.innerWidth >= 1024) {
+                return itemsPerRow.laptop * defaultRows.laptop;
+            } else if (window.innerWidth >= 640) {
+                return itemsPerRow.tablet * defaultRows.tablet;
+            }
+        }
+        return itemsPerRow.mobile * defaultRows.mobile;
+    };
+
+    const [defaultShownVideos, setDefaultShownVideos] = useState(getDefaultShownVideos());
+
+    useEffect(() => {
+        const handleResize = () => {
+            setDefaultShownVideos(getDefaultShownVideos());
+        };
+
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
     const VideosSkeleton = () => (
         <div className="flex flex-wrap">
             {Array.from({ length: 6 }).map((_, index) => (
@@ -54,7 +179,7 @@ const VideosComponent: React.FC<VideosComponentProps> = ({ videos }) => {
             ))}
         </div>
     );
-    // 12. Render the 'VideosComponent' JSX
+
     return (
         <>
             {
@@ -72,106 +197,78 @@ const VideosComponent: React.FC<VideosComponentProps> = ({ videos }) => {
                 ) : (
                     <>
                         <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg p-4 mt-4 w-full">
-                            {/* 13. Render the header with the "Videos" title and the Serper logo */}
-                            <div className="flex items-center">
-                                <h2 className="text-lg font-semibold flex-grow text-black dark:text-white">Videos</h2>
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Videos</h2>
+                                {videos.length > defaultShownVideos && (
+                                    <button
+                                        className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors duration-200"
+                                        onClick={toggleExpand}
+                                    >
+                                        {expanded ? (
+                                            <IconClose className="w-5 h-5" />
+                                        ) : (
+                                            <IconPlus className="w-5 h-5" />
+                                        )}
+                                    </button>
+                                )}
                             </div>
-                            {/* 14. Render the video thumbnails */}
-                            <div className={`flex flex-wrap mx-1 w-full transition-all duration-500 ${showMore ? 'max-h-[500px]' : 'max-h-[200px]'} overflow-hidden`}>
-                                {videos.slice(0, showMore ? 6 : 6).map((video, index) => (
+                            <div className={`grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2 ${expanded ? '' : 'max-h-[96px] lg:max-h-[88px]'} overflow-hidden transition-all duration-500`}>
+                                {videos.slice(0, expanded ? videos.length : defaultShownVideos).map((video, index) => (
                                     <div
                                         key={index}
-                                        className="transition ease-in-out duration-200 transform hover:-translate-y-1 hover:scale-110 w-1/6 p-1 cursor-pointer"
-                                        onClick={() => handleVideoClick(video.link)}
+                                        className="cursor-pointer group"
+                                        onClick={() => handleVideoClick(video)}
                                     >
-                                        {!loadedImages[index] && (
-                                            <div className="w-full overflow-hidden aspect-video">
-                                                <div className="w-full h-24 bg-gray-300 dark:bg-gray-700 rounded animate-pulse"></div>
-                                            </div>
-                                        )}
-                                        <div className="w-full overflow-hidden aspect-video transition-all duration-200">
+                                        <div className="w-full aspect-video relative overflow-hidden rounded">
+                                            {!loadedImages[index] && (
+                                                <div className="w-full h-full bg-gray-300 dark:bg-gray-700 animate-pulse"></div>
+                                            )}
                                             <img
                                                 src={video.imageUrl}
-                                                alt={`Video ${index}`}
-                                                className={`w-full h-auto rounded-lg transition-all duration-200 ${loadedImages[index] ? 'block' : 'hidden'}`}
+                                                alt={`Video ${index + 1}`}
+                                                className={`w-full h-full object-cover transition-all duration-200 transform group-hover:scale-105 ${loadedImages[index] ? 'block' : 'hidden'}`}
                                                 onLoad={() => handleImageLoad(index)}
                                             />
+                                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-200"></div>
+                                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200">
+                                                <IconPlay />
+                                            </div>
                                         </div>
+                                        <p className="mt-1 text-xs font-medium text-gray-900 dark:text-gray-100 line-clamp-1">{video.title}</p>
                                     </div>
                                 ))}
                             </div>
-                            {/* 15. Render the video modal when a video is selected */}
                             {selectedVideo && (
-                                <div
-                                    className={`fixed ${isFullScreen ? 'inset-0' : 'bottom-2 right-2 md:bottom-2 md:right-2'} z-50 ${isFullScreen ? 'w-full h-full' : 'w-full md:w-1/2 lg:w-1/4 h-1/4 md:h-1/4'
-                                        } bg-black bg-opacity-75 flex items-center justify-center transition-all duration-300 rounded-lg shadow-lg border-4 border-white`}
-                                >
-                                    <div className="relative w-full h-full">
-                                        {/* 16. Render the YouTube video iframe */}
-                                        <iframe
-                                            src={`https://www.youtube.com/embed/${getYouTubeVideoId(selectedVideo)}?autoplay=1`}
-                                            title="YouTube Video"
-                                            allowFullScreen
-                                            className="w-full h-full rounded-lg"
-                                            allow='autoplay'
-                                        ></iframe>
-                                        {/* 17. Render the close button for the video modal */}
-                                        <button
-                                            className="absolute top-2 right-2 p-2 bg-white text-black rounded-full hover:bg-gray-200 focus:outline-none"
-                                            onClick={handleCloseModal}
-                                        >
-                                            <svg
-                                                xmlns="http://www.w3.org/2000/svg"
-                                                className="h-6 w-6"
-                                                fill="none"
-                                                viewBox="0 0 24 24"
-                                                stroke="currentColor"
-                                            >
-                                                <path
-                                                    strokeLinecap="round"
-                                                    strokeLinejoin="round"
-                                                    strokeWidth={2}
-                                                    d="M6 18L18 6M6 6l12 12"
-                                                />
-                                            </svg>
-                                        </button>
-                                        {/* 18. Render the full-screen toggle button */}
-                                        <button
-                                            className="absolute bottom-2 right-2 p-2 bg-white text-black rounded-full hover:bg-gray-200 focus:outline-none"
-                                            onClick={toggleFullScreen}
-                                        >
-                                            {isFullScreen ? (
-                                                <svg
-                                                    xmlns="http://www.w3.org/2000/svg"
-                                                    className="h-6 w-6"
-                                                    fill="none"
-                                                    viewBox="0 0 24 24"
-                                                    stroke="currentColor"
-                                                >
-                                                    <path
-                                                        strokeLinecap="round"
-                                                        strokeLinejoin="round"
-                                                        strokeWidth={2}
-                                                        d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
-                                                    />
-                                                </svg>
-                                            ) : (
-                                                <svg
-                                                    xmlns="http://www.w3.org/2000/svg"
-                                                    className="h-6 w-6"
-                                                    fill="none"
-                                                    viewBox="0 0 24 24"
-                                                    stroke="currentColor"
-                                                >
-                                                    <path
-                                                        strokeLinecap="round"
-                                                        strokeLinejoin="round"
-                                                        strokeWidth={2}
-                                                        d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
-                                                    />
-                                                </svg>
-                                            )}
-                                        </button>
+                                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75">
+                                    <div ref={playerRef} className="relative w-full max-w-4xl aspect-video bg-black">
+                                        <video
+                                            ref={videoRef}
+                                            src={selectedVideo.link}
+                                            className="w-full h-full"
+                                            onTimeUpdate={handleProgress}
+                                            onEnded={() => setIsPlaying(false)}
+                                        />
+                                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-4">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <button onClick={togglePlay} className="text-white hover:text-gray-300">
+                                                    {isPlaying ? <IconPause /> : <IconPlay />}
+                                                </button>
+                                                <div className="flex items-center space-x-4">
+                                                    <button onClick={toggleMute} className="text-white hover:text-gray-300">
+                                                        {isMuted ? <IconVolumeX /> : <IconVolume2 />}
+                                                    </button>
+                                                    <button onClick={toggleFullScreen} className="text-white hover:text-gray-300">
+                                                        {isFullScreen ? <IconMinimize /> : <IconMaximize />}
+                                                    </button>
+                                                    <button onClick={handleCloseModal} className="text-white hover:text-gray-300">
+                                                        <IconClose className="w-6 h-6" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="w-full bg-gray-600 h-1 rounded-full overflow-hidden cursor-pointer" onClick={handleProgressBarClick}>
+                                                <div className="bg-blue-500 h-full" style={{ width: `${progress}%` }}></div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -182,9 +279,5 @@ const VideosComponent: React.FC<VideosComponentProps> = ({ videos }) => {
         </>
     )
 };
-// 19. Define the 'getYouTubeVideoId' function to extract the YouTube video ID from a URL
-const getYouTubeVideoId = (url: string) => {
-    const match = url.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=)?(?:embed\/)?(?:v\/)?(?:shorts\/)?(?:\S+)/);
-    return match ? match[0].split('/').pop()?.split('=').pop() : '';
-};
+
 export default VideosComponent;

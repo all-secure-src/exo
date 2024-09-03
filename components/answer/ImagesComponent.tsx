@@ -15,7 +15,6 @@ interface ImagesComponentProps {
 
 // 4. Define the 'ImagesComponent' functional component that takes 'images' as a prop
 const ImagesComponent: React.FC<ImagesComponentProps> = ({ images }) => {
-    console.log("images ---- ", images);
     // 5. Use the 'useState' hook to manage the 'showMore' and 'selectedImage' state
     const [showMore, setShowMore] = useState(false);
     const [selectedImage, setSelectedImage] = useState<string | null>(null);

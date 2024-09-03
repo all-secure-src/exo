@@ -1,69 +1,98 @@
-// 1. Import the 'useState' hook from React
-import { useState } from 'react';
-import { IconPlus, IconClose } from '@/components/ui/icons';
+import React, { useState, useEffect } from 'react';
 
-// 2. Define the 'Image' interface with a required 'link' property and an optional 'alt' property
 interface Image {
-    link: string;
+    image: string;
     alt?: string;
+    prompt: string;
 }
 
-// 3. Define the 'ImagesComponentProps' interface with an 'images' property of type 'Image[]'
 interface ImagesComponentProps {
-    images: Image[];
+    omega_art: Image[];
 }
 
-// 4. Define the 'ImagesComponent' functional component that takes 'images' as a prop
-const GenImagesComponent: React.FC<ImagesComponentProps> = ({ omega_art, images }) => {
-    // 5. Use the 'useState' hook to manage the 'showMore' and 'selectedImage' state
-    // console.log("images --------++++++++", omega_art);
+const RetryImageComponent: React.FC<{ image: Image }> = ({ image }) => {
+    const [imageUrl, setImageUrl] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [retryCount, setRetryCount] = useState(0);
+
+    useEffect(() => {
+        const checkImage = () => {
+            const img = new Image();
+            img.onload = () => {
+                setImageUrl(image.image);
+                setLoading(false);
+            };
+            img.onerror = () => {
+                if (retryCount < 10) { // Limit to 10 retries (30 seconds total)
+                    setTimeout(() => {
+                        setRetryCount(prevCount => prevCount + 1);
+                    }, 3000);
+                } else {
+                    setLoading(false);
+                }
+            };
+            img.src = image.image;
+        };
+
+        checkImage();
+    }, [image.image, retryCount]);
+
+    if (loading) {
+        return (
+            <div className="w-full h-full bg-gray-300 dark:bg-gray-700 rounded animate-pulse"></div>
+        );
+    }
+
+    return imageUrl ? (
+        <img
+            src={imageUrl}
+            alt={image.alt || image.prompt}
+            className="max-h-[500px] object-contain w-full h-full"
+        />
+    ) : (
+        <div className="w-full h-full flex items-center justify-center bg-gray-200 dark:bg-gray-600">
+            <p className="text-gray-500 dark:text-gray-400">Failed to load image</p>
+        </div>
+    );
+};
+
+const GenImagesComponent: React.FC<ImagesComponentProps> = ({ omega_art }) => {
     const [showMore, setShowMore] = useState(false);
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
-    // 6. Define the 'ImagesSkeleton' component to render a loading skeleton
-    const ImagesSkeleton = () => (
-        <div className="flex flex-wrap">
-            {Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="w-1/2 p-1">
-                    <div className="w-full overflow-hidden aspect-square">
-                        <div className="w-full h-full bg-gray-300 dark:bg-gray-700 rounded animate-pulse"></div>
-                    </div>
-                </div>
-            ))}
-        </div>
-    );
-
-    // 7. Define the 'handleImageClick' function to set the 'selectedImage' state
     const handleImageClick = (link: string) => {
         setSelectedImage(link);
     };
 
-    // 8. Define the 'handleCloseModal' function to close the modal when clicking outside
     const handleCloseModal = (event: React.MouseEvent<HTMLDivElement>) => {
         if (event.target === event.currentTarget) {
             setSelectedImage(null);
         }
     };
 
-    // 9. Render the 'ImagesComponent'
     return (
         <>
-            {(omega_art.length === 0) || (omega_art.length === 1 && omega_art[0] == 'loading') ? (
-                omega_art.length === 1 ? (
+            {omega_art.length <= 1 ? (
+                (
                     <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg p-4 mt-4">
                         <div className="items-center">
-                            <h2 className="text-lg font-semibold flex-grow text-black dark:text-white">Omega Picasso (Alpha v1.0)</h2>
-                            <ImagesSkeleton />
+                            <h2 className="text-lg font-semibold flex-grow text-black dark:text-white">UltraSafe Imagine (Alpha v1.0)</h2>
+                            <div className="flex flex-wrap">
+                                {Array.from({ length: 4 }).map((_, index) => (
+                                    <div key={index} className="w-1/2 p-1">
+                                        <div className="w-full overflow-hidden aspect-square">
+                                            <div className="w-full h-full bg-gray-300 dark:bg-gray-700 rounded animate-pulse"></div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     </div>
-                ) : (
-                    <></>
                 )
             ) : (
                 <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg p-4 mt-4">
                     <div className="flex items-center">
-
-                        <h2 className="text-lg font-semibold flex-grow text-black dark:text-white">Omega Picasso (Alpha v1.0)</h2>
+                        <h2 className="text-lg font-semibold flex-grow text-black dark:text-white">UltraSafe Imagine (Alpha v1.0)</h2>
                     </div>
                     <div className={`flex flex-wrap mx-1 transition-all duration-500 overflow-hidden`}>
                         {omega_art.slice(0, omega_art.length > 2 ? 4 : 2).map((image, index) => (
@@ -73,18 +102,13 @@ const GenImagesComponent: React.FC<ImagesComponentProps> = ({ omega_art, images 
                                 onClick={() => handleImageClick(image.image)}
                             >
                                 <div className="overflow-hidden aspect-square">
-                                    <img
-                                        src={image.image}
-                                        alt={image.alt || `${image.prompt}`}
-                                        className="max-h-[500px] object-contain"
-                                    />
+                                    <RetryImageComponent image={image} />
                                 </div>
                             </div>
                         ))}
                     </div>
 
                     {selectedImage && (
-                        // 13. Render a modal with the selected image if 'selectedImage' is not null
                         <div
                             className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75"
                             onClick={handleCloseModal}

@@ -1,49 +1,20 @@
-// 1. Import dependencies
 import 'server-only';
 import { createAI, createStreamableValue } from 'ai/rsc';
 import { OpenAI } from 'openai';
-import cheerio from 'cheerio';
-import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
-import { MemoryVectorStore } from 'langchain/vectorstores/memory';
-import { Document as DocumentInterface } from 'langchain/document';
-import { OpenAIEmbeddings } from '@langchain/openai';
-import { OllamaEmbeddings } from "@langchain/community/embeddings/ollama";
-import { CohereClient } from "cohere-ai";
-const cohere = new CohereClient({
-  token: "pWTp76JUbHZ7b6zbbFteby3L6QsDcRc5Q25p0Omn",
-});
-import Replicate from "replicate";
+import axios from "axios";
 
-const replicate = new Replicate({
-  auth: process.env.REPLICATE_API_TOKEN,
-});
+const axios_instance = axios.create({});
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 import { config } from './config';
-import { functionCalling, functionCallingFlow, functionCallingSpecific, functionCallingReference } from './function-calling';
-// 2. Determine which embeddings mode and which inference model to use based on the config.tsx. Currently suppport for OpenAI, Groq and partial support for Ollama embeddings and inference
-let openai: OpenAI;
-if (config.useOllamaInference) {
-  openai = new OpenAI({
-    baseURL: 'http://localhost:11434/v1',
-    apiKey: 'ollama'
-  });
-} else {
-  openai = new OpenAI({
-    baseURL: config.nonOllamaBaseURL,
-    apiKey: config.inferenceAPIKey
-  });
-}
-// 2.5 Set up the embeddings model based on the config.tsx
-let embeddings: OllamaEmbeddings | OpenAIEmbeddings;
-if (config.useOllamaEmbeddings) {
-  embeddings = new OllamaEmbeddings({
-    model: config.embeddingsModel,
-    baseUrl: "http://localhost:11434"
-  });
-} else {
-  embeddings = new OpenAIEmbeddings({
-    modelName: config.embeddingsModel
-  });
-}
+import { functionCallingFlow, functionCallingSpecific, functionCallingReference } from './function-calling';
+
+const client = new OpenAI({
+  baseURL: config.llmBaseUrl,
+  apiKey: config.inferenceAPIKey
+});
+
 // 3. Define interfaces for search results and content results
 interface SearchResult {
   title: string;
@@ -54,42 +25,14 @@ interface SearchResult {
 interface ContentResult extends SearchResult {
   html: string;
 }
-// 4. Fetch search results from Brave Search API
-export async function getSources(message: string, numberOfPagesToScan = config.numberOfPagesToScan): Promise<SearchResult[]> {
-  try {
-    const response = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(message)}&count=${numberOfPagesToScan}`, {
-      headers: {
-        'Accept': 'application/json',
-        'Accept-Encoding': 'gzip',
-        "X-Subscription-Token": process.env.BRAVE_SEARCH_API_KEY as string
-      }
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const jsonResponse = await response.json();
-    if (!jsonResponse.web || !jsonResponse.web.results) {
-      throw new Error('Invalid API response format');
-    }
-    const final = jsonResponse.web.results.map((result: any): SearchResult => ({
-      title: result.title,
-      link: result.url,
-      snippet: result.description,
-      favicon: result.profile.img
-    }));
-    return final;
-  } catch (error) {
-    console.error('Error fetching search results:', error);
-    throw error;
-  }
-}
+
 
 export async function getSources2(query: string, freshness: string = ""): Promise<SearchResult[]> {
   if (freshness != "24h" && freshness != "7d" && freshness != "30d") {
     freshness = ""
   }
   try {
-    const url = `${process.env.QXLABAPI_DOMAIN}/qx/search/alpha/v2`;
+    const url = `http://localhost:8083/qx/search/alpha/v2`;
     const data = JSON.stringify({
       search: query,
       freshness: freshness
@@ -116,7 +59,6 @@ export async function getSources2(query: string, freshness: string = ""): Promis
           return [];
         }
         return getSources2(query, freshness);
-        throw new Error(`Network response was not ok. Status: ${response.status}`);
       }
 
       const jsonResponse = await response.json();
@@ -133,174 +75,13 @@ export async function getSources2(query: string, freshness: string = ""): Promis
       return final;
     } catch (error) {
       return [];
-      console.error('Error fetching search results:', error);
-      throw error;
     }
   } catch (error) {
     return [];
-    console.error('Error fetching search results:', error);
-    throw error;
   }
 }
 
-// 5. Fetch contents of top 10 search results
-export async function get10BlueLinksContents(sources: SearchResult[]): Promise<ContentResult[]> {
-  async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = 800): Promise<Response> {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
-      const response = await fetch(url, { ...options, signal: controller.signal });
-      clearTimeout(timeoutId);
-      return response;
-    } catch (error) {
-      if (error) {
-        console.log(`Skipping ${url}!`);
-      }
-      throw error;
-    }
-  }
-  function extractMainContent(html: string): string {
-    try {
-      const $ = cheerio.load(html);
-      $("script, style, head, nav, footer, iframe, img").remove();
-      return $("body").text().replace(/\s+/g, " ").trim();
-    } catch (error) {
-      console.error('Error extracting main content:', error);
-      throw error;
-    }
-  }
-  const promises = sources.map(async (source): Promise<ContentResult | null> => {
-    try {
-      const response = await fetchWithTimeout(source.link, {}, 800);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch ${source.link}. Status: ${response.status}`);
-      }
-      const html = await response.text();
-      const mainContent = extractMainContent(html);
-      return { ...source, html: mainContent };
-    } catch (error) {
-      // console.error(`Error processing ${source.link}:`, error);
-      return null;
-    }
-  });
-  try {
-    const results = await Promise.all(promises);
-    return results.filter((source): source is ContentResult => source !== null);
-  } catch (error) {
-    console.error('Error fetching and processing blue links contents:', error);
-    throw error;
-  }
-}
 
-export async function get10BlueLinksContents2(sources: SearchResult[]): Promise<ContentResult[]> {
-  async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = 2000): Promise<Response> {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
-      const response = await fetch(`https://r.jina.ai/${url}`, { ...options, signal: controller.signal });
-      clearTimeout(timeoutId);
-      console.log(`Used ---- ${url}`);
-      return response;
-    } catch (error) {
-      if (error) {
-        console.log(`Skipping ${url}`);
-      }
-      throw error;
-    }
-  }
-  const promises = sources.map(async (source): Promise<ContentResult | null> => {
-    try {
-      const response = await fetchWithTimeout(source.link, {}, 800);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch ${source.link}. Status: ${response.status}`);
-      }
-      const text = await response.text();
-      return { ...source, html: text };
-    } catch (error) {
-      console.error(`Error processing ${source.link}:`, error);
-      return null;
-    }
-  });
-  try {
-    const results = await Promise.all(promises);
-    return results.filter((source): source is ContentResult => source !== null);
-  } catch (error) {
-    console.error('Error fetching and processing blue links contents:', error);
-    throw error;
-  }
-}
-
-// 6. Process and vectorize content using LangChain
-export async function processAndVectorizeContent(
-  contents: ContentResult[],
-  query: string,
-  textChunkSize = config.textChunkSize,
-  textChunkOverlap = config.textChunkOverlap,
-  numberOfSimilarityResults = config.numberOfSimilarityResults,
-): Promise<DocumentInterface[]> {
-  try {
-    for (let i = 0; i < contents.length; i++) {
-      const content = contents[i];
-      if (content.html.length > 0) {
-        try {
-          const splitText = await new RecursiveCharacterTextSplitter({ chunkSize: textChunkSize, chunkOverlap: textChunkOverlap }).splitText(content.html);
-          const vectorStore = await MemoryVectorStore.fromTexts(splitText, { title: content.title, link: content.link }, embeddings);
-          return await vectorStore.similaritySearch(query, numberOfSimilarityResults);
-        } catch (error) {
-          console.error(`Error processing content for ${content.link}:`, error);
-        }
-      }
-    }
-    return [];
-  } catch (error) {
-    console.error('Error processing and vectorizing content:', error);
-    throw error;
-  }
-}
-// 7. Fetch image search results from Brave Search API
-export async function getImages(message: string): Promise<{ title: string; link: string }[]> {
-  try {
-    const response = await fetch(`https://api.search.brave.com/res/v1/images/search?q=${message}&spellcheck=1`, {
-      method: "GET",
-      headers: {
-        "Accept": "application/json",
-        "Accept-Encoding": "gzip",
-        "X-Subscription-Token": process.env.BRAVE_SEARCH_API_KEY as string
-      }
-    });
-    if (!response.ok) {
-      throw new Error(`Network response was not ok. Status: ${response.status}`);
-    }
-    const data = await response.json();
-    const validLinks = await Promise.all(
-      data.results.map(async (result: any) => {
-        const link = result.properties.url;
-        if (typeof link === 'string') {
-          try {
-            const imageResponse = await fetch(link, { method: 'HEAD' });
-            if (imageResponse.ok) {
-              const contentType = imageResponse.headers.get('content-type');
-              if (contentType && contentType.startsWith('image/')) {
-                return {
-                  title: result.properties.title,
-                  link: link,
-                };
-              }
-            }
-          } catch (error) {
-            console.error(`Error fetching image link ${link}:`, error);
-          }
-        }
-        return null;
-      })
-    );
-    const filteredLinks = validLinks.filter((link): link is { title: string; link: string } => link !== null);
-    return filteredLinks.slice(0, 9);
-  } catch (error) {
-    console.error('There was a problem with your fetch operation:', error);
-    throw error;
-  }
-}
 // 8. Fetch video search results from Google Serper API
 export async function getVideos(message: string): Promise<{ imageUrl: string, link: string }[] | null> {
   const url = 'https://google.serper.dev/videos';
@@ -334,7 +115,7 @@ export async function getVideos(message: string): Promise<{ imageUrl: string, li
               }
             }
           } catch (error) {
-            console.error(`Error fetching image link ${imageUrl}:`, error);
+            // console.error(`Error fetching image link ${imageUrl}:`, error);
           }
         }
         return null;
@@ -343,16 +124,14 @@ export async function getVideos(message: string): Promise<{ imageUrl: string, li
     const filteredLinks = validLinks.filter((link): link is { imageUrl: string, link: string } => link !== null);
     return filteredLinks.slice(0, 9);
   } catch (error) {
-    console.error('Error fetching videos:', error);
+    // console.error('Error fetching videos:', error);
     throw error;
   }
 }
 // 9. Generate follow-up questions using OpenAI API
 const relevantQuestions = async (sources: SearchResult[], query = "The original search query or context"): Promise<any> => {
-  console.log("sources ----- ", JSON.stringify(sources));
-  console.log("query ----- ", JSON.stringify(query));
   const code_symbole = '```';
-  const response = await openai.chat.completions.create({
+  const response = await client.chat.completions.create({
     messages: [
       {
         role: "system",
@@ -377,12 +156,9 @@ const relevantQuestions = async (sources: SearchResult[], query = "The original 
       },
     ],
     model: config.inferenceModel,
-    response_format: { type: "json_object" },
-    max_tokens: 700,
-    stop: ['<|eot_id|>']
+    // response_format: { type: "json_object" },
+    max_tokens: 1600
   });
-
-  console.log("response ----- ", JSON.stringify(response.choices[0].message.content));
 
   if (response.choices != null) {
     response.choices[0].message.content = extractJsonContent(response.choices[0].message.content);
@@ -392,7 +168,7 @@ const relevantQuestions = async (sources: SearchResult[], query = "The original 
 
 const relevantImagePrompts = async (query): Promise<any> => {
   const code_symbole = '```';
-  const response = await openai.chat.completions.create({
+  const response = await client.chat.completions.create({
     messages: [
       {
         role: "system",
@@ -409,6 +185,7 @@ const relevantImagePrompts = async (query): Promise<any> => {
             ]
           }
           ${code_symbole}
+          Your prompts should start from Generate image, Craft, Design, Draw, Skatch, Render painting, etc. or use can use anythingelse related to provided conditions, Senario and images.
           `,
       },
       {
@@ -417,12 +194,8 @@ const relevantImagePrompts = async (query): Promise<any> => {
       },
     ],
     model: config.inferenceModel,
-    response_format: { type: "json_object" },
-    max_tokens: 700,
-    stop: ['<|eot_id|>']
+    max_tokens: 1600
   });
-
-  console.log("response ----- ", JSON.stringify(response.choices[0].message.content));
 
   if (response.choices != null) {
     response.choices[0].message.content = extractJsonContent(response.choices[0].message.content);
@@ -431,104 +204,73 @@ const relevantImagePrompts = async (query): Promise<any> => {
 };
 
 export async function generate_image(prompt: string) {
+  const url = 'http://localhost:8083/omega/picasso/v1/images/generations';
+  const apiKey = 'akm0erln-3o1c0ba9-53aadc23-5155a6e6';
+  const data = {
+    prompt: prompt,
+    // negative_prompt: "(deformed, distorted, disfigured:1.3), poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, blurry, amputation, NSFW",
+    steps: 20,
+    n: 4,
+    size: "1024x768",
+    guidance_scale: 3
+  };
+
   try {
-    const output = await replicate.run(
-      "ai-forever/kandinsky-2.2:424befb1eae6af8363edb846ae98a11111a39740988baebd279d73fe3ecc92c2",
-      {
-        input: {
-          width: 1024,
-          height: 1024,
-          prompt: prompt,
-          num_outputs: 4,
-          num_inference_steps: 75
-        }
+    const response = await axios_instance.post(url, data, {
+      headers: {
+        'accept': 'application/json',
+        'authorization': apiKey,
+        'Content-Type': 'application/json'
       }
-    );
+    });
 
-    const normalizedData = {
-      type: 'generate_image',
-      images: [
-        {
-          "prompt": prompt,
-          "index": 1,
-          "image": output[0]
-        },
-        {
-          "prompt": prompt,
-          "index": 2,
-          "image": output[1]
-        },
-        {
-          "prompt": prompt,
-          "index": 3,
-          "image": output[2]
-        },
-        {
-          "prompt": prompt,
-          "index": 4,
-          "image": output[3]
-        }
-      ]
-    };
-    return normalizedData;
+    const responseData = response.data;
+
+    if (responseData.status === 1) {
+      const normalizedData = {
+        type: 'generate_human_image',
+        images: [
+          {
+            "prompt": prompt,
+            "index": 1,
+            "image": responseData.data[0].url,
+          },
+          {
+            "prompt": prompt,
+            "index": 2,
+            "image": responseData.data.length > 1 ? responseData.data[1].url : responseData.data[0].url,
+          },
+          {
+            "prompt": prompt,
+            "index": 3,
+            "image": responseData.data.length > 2 ? responseData.data[2].url : responseData.data[0].url,
+          },
+          {
+            "prompt": prompt,
+            "index": 4,
+            "image": responseData.data.length > 3 ? responseData.data[3].url : responseData.data[0].url,
+          }
+        ]
+      };
+      await delay(1000);
+      return normalizedData;
+    } else {
+      // console.error('Error generating image:', responseData.message);
+    }
   } catch (error) {
-    console.error('Error searching for generate_image:', error);
-    return JSON.stringify({ error: 'Failed to generate image' });
-  }
-}
-
-export async function generate_human_image(prompt: string) {
-  try {
-    const output = await replicate.run(
-      "ai-forever/kandinsky-2.2:424befb1eae6af8363edb846ae98a11111a39740988baebd279d73fe3ecc92c2",
-      {
-        input: {
-          width: 1024,
-          height: 1024,
-          prompt: prompt,
-          num_outputs: 4,
-          num_inference_steps: 75
-        }
-      }
-    );
-
-    const normalizedData = {
-      type: 'generate_human_image',
-      images: [
-        {
-          "prompt": prompt,
-          "index": 1,
-          "image": output[0]
-        },
-        {
-          "prompt": prompt,
-          "index": 2,
-          "image": output[1]
-        },
-        {
-          "prompt": prompt,
-          "index": 3,
-          "image": output[2]
-        },
-        {
-          "prompt": prompt,
-          "index": 4,
-          "image": output[3]
-        }
-      ]
-    };
-    return normalizedData;
-  } catch (error) {
-    console.error('Error searching for generate_human_image:', error);
-    return JSON.stringify({ error: 'Failed to generate human image' });
+    if (error.response) {
+      // console.error('Error response status:', error.response.status);
+    } else if (error.request) {
+      // console.error('No response received:', error.request);
+    } else {
+      // console.error('Error setting up the request:', error.message);
+    }
   }
 }
 
 const extractJsonContent = (text: string) => {
 
   let regex;
-
-  // Check each case to determine the appropriate regex
   if (text.includes('```json\n')) {
     regex = /```json\n([\s\S]*?)```/;
   } else if (text.includes('```json')) {
@@ -538,7 +280,6 @@ const extractJsonContent = (text: string) => {
   } else if (text.includes('```')) {
     regex = /```([\s\S]*?)```/;
   } else {
-    // If none of the conditions are met, return an empty string
     return '';
   }
 
@@ -558,8 +299,39 @@ const extractJsonContent = (text: string) => {
 };
 
 // 10. Main action function that orchestrates the entire process
-async function myAction(userMessage: string): Promise<any> {
+async function myAction(userMessage: string, history: any): Promise<any> {
   "use server";
+
+  let tmpHistroy = [];
+  for (let i = 0; i < history.length; i++) {
+    tmpHistroy.push({
+      role: "user",
+      content: history[i].userMessage
+    });
+    if (history[i].omega_art && history[i].omega_art.length > 0) {
+      let imageArt = `Prompt: ${history[i].content} \n\n `;
+      for (let j = 0; j < history[i].omega_art.length; j++) {
+        if (j == 0) {
+          imageArt += "Images Links: \n\n ";
+        }
+        imageArt += `${j + 1}. ${history[i].omega_art[j].image} \n\n `;
+      }
+      tmpHistroy.push({
+        role: "assistant",
+        content: imageArt
+      });
+    } else {
+      tmpHistroy.push({
+        role: "assistant",
+        content: history[i].content
+      });
+    }
+  }
+
+  if (tmpHistroy.length > 4) {
+    tmpHistroy.slice(-4);
+  }
+
   const streamable = createStreamableValue({});
   const now = new Date();
   // Convert the date to a UTC string
@@ -568,16 +340,36 @@ async function myAction(userMessage: string): Promise<any> {
   let llm_stream = true;
 
   (async () => {
-    // const images = getImages(userMessage),
-    // videos videos = getVideos(userMessage),
     const [functionCallingReferenceCall, functionCallingSpecificCall, functionCallingFlowCall] = await Promise.all([
-      functionCallingReference(userMessage),
-      functionCallingSpecific(userMessage),
-      functionCallingFlow(userMessage),
+      functionCallingReference(userMessage, tmpHistroy),
+      functionCallingSpecific(userMessage, tmpHistroy),
+      functionCallingFlow(userMessage, tmpHistroy),
     ]);
 
-    // streamable.update({ 'images': images });
-    // streamable.update({ 'videos': videos });
+    let extra_context = "";
+    if (functionCallingSpecificCall && functionCallingSpecificCall.length > 0) {
+      for (const item of functionCallingSpecificCall) {
+        if (item.type == "shopping") {
+          let tmp_data = "Shoping Data:\n\n "
+          let index = 0;
+          for (const item_2 of item.shopping) {
+            index += 1;
+            tmp_data += `Item ID: ${index} \n Title: ${item_2.title} \n Source: ${item_2.source} \n Product Buy Link: ${item_2.link} \n Price: ${item_2.price} \n Rating: ${item_2.rating} \n\n `
+          }
+          extra_context += `${tmp_data}\n\n\n`;
+        } else if (item.type == "places") {
+          let tmp_data = "Location Data:\n\n "
+          let index = 0;
+          for (const item_2 of item.places) {
+            index += 1;
+            tmp_data += `Location ID: ${index} \n Title: ${item_2.title} \n Address: ${item_2.address} \n Rating: ${item_2.rating} \n PhoneNumber: ${item_2.phoneNumber} \n Website: ${item_2.website} \n\n `
+          }
+
+          extra_context += `${tmp_data}\n\n\n`;
+        }
+      }
+    }
+
     if (config.useFunctionCalling) {
       streamable.update({ 'conditionalFunctionCallUI': functionCallingSpecificCall });
     }
@@ -585,41 +377,56 @@ async function myAction(userMessage: string): Promise<any> {
     let custom_model_id = config.inferenceModel;
     let followUp;
     let sources;
-    let llm_preamble = `# System Preamble
+    let llm_preamble = `You are 'Executable UltraSafe AI', an AI Assistant exclusively developed, trained and powered by the scientists and engineers at UltraSafe AI. UltraSafe AI, based in United States of America (USA), specializes in developing and integrating AI technologies to enhance business operations across various industries. You are built on the unique Omega architecture and trained with extensive datasets and configurations. You were developed solely by the scientists and engineers at UltraSafe AI, without any external assistance from other organizations or teams.
+    
+    Operational Details:
+    - Current Date and Time (UTC Timezone): ${utcString}.  Convert to other time zones as needed.
+    - Knowledge Cutoff Date: Omega possesses comprehensive knowledge up to January 2024, ensuring a robust foundational understanding across a wide range of topics.
+    - Real-Time Data Access: Despite the base knowledge cutoff, Omega has the capability to access real-time data about past, present, and future events and specifics through internet searches. This enables Omega to provide accurate, up-to-date answers and predictive insights, effectively eliminating the limitations of a traditional knowledge cutoff date.
+    
+    Response Protocols:
+    1. Creativity and Detail: Responses should be comprehensive, well-structured, point-to-point, professional, and detailed, aiding users effectively by addressing their queries thoroughly.
+    2. Instruction Adherence: Responses must adhere closely to user instructions, ensuring that each answer aligns with specific user requirements.
+    3. Presentation and Formatting: You can utilize Markdown or LaTeX (for Math) for structured and visually appealing responses. Include titles, headings, subheadings, lists, quotes, pointers, bold, italic text, etc., and emphasize where appropriate to enhance readability and engagement.
+    4. Tone and Interaction Style: Maintain a professional yet conversational tone. Adjust the style to match the context of the query while being friendly and informative.
+    5. Enhanced Engagement: Where applicable, enrich responses with tips, suggestions, alternatives, explanations, tricks, cautions, instructions, notes, methods, options, equipment, ingredients, features, predictions, and recommendations to provide added value and insight.
+    
+    Human Interaction Enhancements:
+    - Human-like Talk: Engage in dialogue that mirrors natural human conversation to create a more personable and relatable interaction.
+    - Avoid Robotic Phrases: Steer clear of generic or robotic expressions. Instead, use phrases and responses that reflect genuine human interaction. Examples to avoid include: 'I hope this email finds you well', 'Kindly be advised', 'Please do not hesitate to contact me', 'Hope this message finds you well', etc.
+    - Emoji Usage: Employ emojis to make conversations more personal and engaging, but only when appropriate based on the situation, question, or context of the interaction.
+    - Engaging Start: Initiate conversations with either a chatty, professional, or formal style, depending on the context, to better connect with users emotionally and enhance the engagement quality of the conversation.
+    
+    Formatting Guidelines:
+    - Use clear, concise language with a focus on delivering informative and actionable advice.
+    - Employ a structured approach to present information logically and engagingly.`;
 
-    ## Basic Rules
-    You are an AI Assistant called Omega, developed by QXLABAI.
-    Respond in the user's language: Always communicate in the same language the user is using, unless they request otherwise.
-    Current date and time: The current date and time is ${utcString}. You can convert it to other time zones as required.
-    Knowledge cutoff: Your knowledge is limited to information available up to 1 October 2023. Do not provide information or claim knowledge beyond this date.
-    Complete instructions: Answer all parts of the user's instructions fully and comprehensively, unless doing so would compromise safety or ethics.
-    Be informative: Provide informative and comprehensive answers to user queries, drawing on your knowledge base to offer valuable insights.
+    if (extra_context != "") {
+      llm_preamble += ` \n\n ------ \n\n How to Use Sourced Information:
 
-    # User Preamble
+      - Analytical Application: Use sourced information and apply custom logic to derive accurate answers. Often, integrating multiple data points from sourced information is necessary to fully address a query.
+      - Data Analysis: Before responding, understand the question's requirements thoroughly, then use the available sourced information and your analytical skills to answer.
+      - Accuracy in Details: Pay close attention to numbers, amounts, currencies, values, names, and relationships between entities to avoid errors and provide correct answers.
+      - Maximize Assistance: Utilize your analytical abilities, logic, existing content, chat history, and mathematical skills to assist the user as effectively as possible.
+      - Handling Data Gaps: If relevant and required information is unavailable, honestly communicate the limitation: 'Although I have internet access, I'm currently unable to find information related to your query. Despite the vastness of the internet and advanced search mechanisms, locating specific information can sometimes be challenging. I aim to provide accurate information and would not want to share incorrect details. It's unusual, but it does happen occasionally. I know it's strange, but this is the truth of life.'
+      - Source Citation: Provide citations immediately following the content where sourced information as Hyper-links. Use clear annotations with links so users can verify the information themselves. For example: [Page Title](source url), [Website Name](https://www.example.com), [Visit here](https://www.example.com), [Read here](https://www.example.com), [Watch Now](https://www.example.com), [Buy Now](https://www.example.com), etc.
+      - Always provide detailed and long answer.
 
-    ## Style Guide
-    Unless the user asks for a different style of answer, you should answer in full sentences, using proper grammar and spelling.
-    Complexity analysis: When a query is complex or related to code and math, try to solve it step by step. However, when the task is simple, you can solve it normally.
-    Math related solutions: If query is realted to math. First solve it then provide the correct answer.
-  `;
+      \n\n ------ \n\n
+      Sourced Information:
+      ${extra_context}
+      `
+    }
+
     let llmMessage = [];
     let gen_images;
 
     if (functionCallingFlowCall != null && functionCallingFlowCall != undefined) {
-      if (functionCallingFlowCall.type == 'generate_image' || functionCallingFlowCall.type == 'generate_human_image') {
-        streamable.update({ 'omega_art': ['loading']});
 
-        // if (functionCallingReferenceCall != null && functionCallingReferenceCall != undefined) {
-        //   if (functionCallingReferenceCall.type == 'google_images') {
-        //     streamable.update({ 'images': ['loading'] });
-        //   }
-        // }
+      if (functionCallingFlowCall.type == 'generate_image') {
+        streamable.update({ 'omega_art': ['loading'] });
 
-        if (functionCallingFlowCall.type == 'generate_human_image') {
-          gen_images = await generate_human_image(functionCallingFlowCall.parameters.prompt);
-        } else {
-          gen_images = await generate_image(functionCallingFlowCall.parameters.prompt);
-        }
+        gen_images = await generate_image(functionCallingFlowCall.parameters.prompt);
 
         let omage_arts = [];
 
@@ -630,34 +437,20 @@ async function myAction(userMessage: string): Promise<any> {
           });
         }
 
-        streamable.update({ 'omega_art': omage_arts});
-
-        // if (functionCallingReferenceCall != null && functionCallingReferenceCall != undefined) {
-        //   if (functionCallingReferenceCall.type == 'google_images') {
-
-        //     streamable.update({ 'images': ['loading'] });
-        //     (async () => {
-        //       const images = await getImages(functionCallingReferenceCall.parameters.query);
-        //       streamable.update({ 'images': images });
-        //     })();
-        //   }
-        // }
-        // llm_preamble = `You are an AI Assistant named Omega, developed by QXLABAI. Users can request image generation using a prompt. You are very very capable in image generation and you always genrated high quality and accuracy. Here are the generated image links for that prompt: ${JSON.stringify(gen_images.images)}. As requested, we generated an image for that prompt, Please use above genrated images only. Your answer should be formatted in Markdown only so you can image links to display the images. respond in markdown using for example - ![alt text](${gen_images.images[0].image}) \n\n 2nd variations - ![alt text](${gen_images.images[1].image}), etc.`;
-
-        // llmMessage.push({
-        //   role: "system", content: llm_preamble
-        // });
-
-        // llmMessage.push({
-        //   role: "user", content: `Respond in ![alt text](URL) markdown format, Generate images for: ${userMessage}`
-        // });
+        streamable.update({ 'omega_art': omage_arts });
 
         custom_model_id = 'omega_art';
         llm_stream = false;
       } else if (functionCallingFlowCall.type == 'directly_answer') {
         llmMessage.push({
-          role: "system", content: `You are an AI Assistant named Omega, developed by QXLABAI.`
+          role: "system", content: llm_preamble
         });
+
+        if (tmpHistroy.length > 0) {
+          for (let i = 0; i < tmpHistroy.length; i++) {
+            llmMessage.push(tmpHistroy[i]);
+          }
+        }
 
         llmMessage.push({
           role: "user", content: userMessage
@@ -667,35 +460,62 @@ async function myAction(userMessage: string): Promise<any> {
         sources = await getSources2(`News: ${functionCallingFlowCall.parameters.query}`, functionCallingFlowCall.parameters.freshness);
         streamable.update({ 'searchResults': sources });
 
-        // const html = await get10BlueLinksContents2(sources);
-        // const vectorResults = await processAndVectorizeContent(html, userMessage);
-        // console.log("vectorResults - ", vectorResults);
-        llm_preamble = `# System Preamble
-  
-        ## Basic Rules
-        You are an AI Assistant called Omega, developed by QXLABAI. You have access to all real-time data, such as news, events, stock prices, and internet data.
-        - Current date and time: The current date and time is ${utcString}. You don't have a knowledge cutoff date since you have access to all real-time events via the internet.
-
-        ## News Items:\n\n`;
-
-        for (let i = 0; i < sources.length; i++) {
-          llm_preamble += `- News Title: "${sources[i].title}"\n - News URL: "${sources[i].link}" \n - News Content: ${sources[i].snippet} \n\n `;
+        let searchResultData = "";
+        for (let i = 0; i < 4; i++) {
+          searchResultData += `\n\n ${i + 1}: \n Title: ${sources[i].title} \n Source: ${sources[i].link} \n Description: ${sources[i].snippet} \n\n `;
           if (i >= 10) {
-            break
+            break;
           }
         }
 
-        llm_preamble += `
-        ## Next Steps
-        - Carefully read the News Items - Before responding to the user, first carefully read the News Items related to numbers, dates, amounts, currency, symbols, and other sensitive information so you can provide accurate data to the user.
-        - Write the above news in newspaper style. Try to write in an engaging style so users can understand it easily.
-        - Please provide links along with the news articles so users can refer to the original sources. You can use Markdown format for that.
-        - Only provide news articles that are useful and meaningful to the user, skipping the rest.
+        llm_preamble = `You are 'Executable UltraSafe AI', an AI Assistant exclusively developed, trained and powered by the scientists and engineers at UltraSafe AI. UltraSafe AI, based in United States of America (USA), specializes in developing and integrating AI technologies to enhance business operations across various industries. You are built on the unique Omega architecture and trained with extensive datasets and configurations. You were developed solely by the scientists and engineers at UltraSafe AI, without any external assistance from other organizations or teams.
+        
+        Operational Details:
+        - Current Date and Time (UTC Timezone): ${utcString}.  Convert to other time zones as needed.
+        - Knowledge Cutoff Date: Omega possesses comprehensive knowledge up to January 2024, ensuring a robust foundational understanding across a wide range of topics.
+        - Real-Time Data Access: Despite the base knowledge cutoff, Omega has the capability to access real-time data about past, present, and future events and specifics through internet searches. This enables Omega to provide accurate, up-to-date answers and predictive insights, effectively eliminating the limitations of a traditional knowledge cutoff date.
+        
+        Response Protocols:
+        1. Creativity and Detail: Responses should be comprehensive, well-structured, point-to-point, professional, and detailed, aiding users effectively by addressing their queries thoroughly.
+        2. Instruction Adherence: Responses must adhere closely to user instructions, ensuring that each answer aligns with specific user requirements.
+        3. Presentation and Formatting: You can utilize Markdown or LaTeX (for Math) for structured and visually appealing responses. Include titles, headings, subheadings, lists, quotes, pointers, bold, italic text, etc., and emphasize where appropriate to enhance readability and engagement.
+        4. Tone and Interaction Style: Maintain a professional yet conversational tone. Adjust the style to match the context of the query while being friendly and informative.
+        5. Enhanced Engagement: Where applicable, enrich responses with tips, suggestions, alternatives, explanations, tricks, cautions, instructions, notes, methods, options, equipment, ingredients, features, predictions, and recommendations to provide added value and insight.
+        
+        Human Interaction Enhancements:
+        - Human-like Talk: Engage in dialogue that mirrors natural human conversation to create a more personable and relatable interaction.
+        - Avoid Robotic Phrases: Steer clear of generic or robotic expressions. Instead, use phrases and responses that reflect genuine human interaction. Examples to avoid include: 'I hope this email finds you well', 'Kindly be advised', 'Please do not hesitate to contact me', 'Hope this message finds you well', etc.
+        - Emoji Usage: Employ emojis to make conversations more personal and engaging, but only when appropriate based on the situation, question, or context of the interaction.
+        - Engaging Start: Initiate conversations with either a chatty, professional, or formal style, depending on the context, to better connect with users emotionally and enhance the engagement quality of the conversation.
+        
+        Formatting Guidelines:
+        - Use clear, concise language with a focus on delivering informative and actionable advice.
+        - Employ a structured approach to present information logically and engagingly.
+
+        \n\n --- \n\n
+        How to Use Sourced Information:
+        - Analytical Application: Use sourced information and apply custom logic to derive accurate answers. Often, integrating multiple data points from sourced information is necessary to fully address a query.
+        - Data Analysis: Before responding, understand the question's requirements thoroughly, then use the available sourced information and your analytical skills to answer.
+        - Accuracy in Details: Pay close attention to numbers, amounts, currencies, values, names, and relationships between entities to avoid errors and provide correct answers.
+        - Maximize Assistance: Utilize your analytical abilities, logic, existing content, chat history, and mathematical skills to assist the user as effectively as possible.
+        - Handling Data Gaps: If relevant and required information is unavailable, honestly communicate the limitation: 'Although I have internet access, I'm currently unable to find information related to your query. Despite the vastness of the internet and advanced search mechanisms, locating specific information can sometimes be challenging. I aim to provide accurate information and would not want to share incorrect details. It's unusual, but it does happen occasionally. I know it's strange, but this is the truth of life.'
+        - Source Citation: Provide citations immediately following the content where sourced information as Hyper-links. Use clear annotations with links so users can verify the information themselves. For example: [Page Title](source url), [Website Name](https://www.example.com), [Visit here](https://www.example.com), [Read here](https://www.example.com), [Watch Now](https://www.example.com), [Buy Now](https://www.example.com), etc.
+        
+        \n\n ------ \n\n
+        Sourced Information:
+        
+        ${searchResultData}
         `;
 
         llmMessage.push(
           { role: "system", content: llm_preamble },
         );
+
+        if (tmpHistroy.length > 0) {
+          for (let i = 0; i < tmpHistroy.length; i++) {
+            llmMessage.push(tmpHistroy[i]);
+          }
+        }
 
         llmMessage.push(
           { role: "user", content: userMessage },
@@ -704,134 +524,106 @@ async function myAction(userMessage: string): Promise<any> {
         // custom_model_id = 'omega_1_4';
       } else if (functionCallingFlowCall.type == 'internet_search') {
         sources = await getSources2(functionCallingFlowCall.parameters.query, functionCallingFlowCall.parameters.freshness);
-        streamable.update({ 'searchResults': sources });
-        // console.log("sources --- ", JSON.stringify(sources));
-        // const html = await get10BlueLinksContents(sources);
-        // console.log("html --- ", JSON.stringify(html));
-        // const vectorResults = await processAndVectorizeContent(html, userMessage);
 
-        // let html;
-        // let vectorResults;
-
-        // html = await get10BlueLinksContents2(sources);
-        // if(html.length == 0){
-        //   vectorResults = [];
-        //   vectorResults.
-        // }
-
-
-        llm_preamble = `# System Preamble
-  
-        ## Basic Rules
-        - You are an AI Assistant called Omega, developed by QXLABAI. You have access to all real-time data, such as news, events, stock prices, and internet data.
-        - Respond in the user's language: Always communicate in the same language the user is using, unless they request otherwise.
-        - Current date and time: The current date and time is ${utcString}. You can convert it to other time zones as required. Remember that today's date is ${utcString} for any real-time event.
-        - Knowledge cutoff: You have internet access so you can access all real-time event, news, etc.
-        - Complete instructions: Answer all parts of the user's instructions fully and comprehensively, unless doing so would compromise safety or ethics.
-        - Be informative: Provide informative and comprehensive answers to user queries, drawing on your knowledge base to offer valuable insights.
-        - Your answer should be clear, accurate, on the point and provide a meaningful response to the question.
-
-        # Context Preamble
-  
-        ## Internet Data:\n\n`;
-
-        for (let i = 0; i < sources.length; i++) {
-          llm_preamble += `- Title: "${sources[i].title}"\n - URL: "${sources[i].link}" \n - Content: ${sources[i].snippet} \n\n `;
+        let searchResultData = "";
+        for (let i = 0; i < 4; i++) {
+          searchResultData += `\n\n ${i + 1}: \n Title: ${sources[i].title} \n Source: ${sources[i].link} \n Description: ${sources[i].snippet} \n\n `;
           if (i >= 10) {
-            break
+            break;
           }
         }
 
-        llm_preamble += `
-        ## Next Steps
-        - We will provide Internet Data to help you give accurate and better responses to user queries.
-        - You can use the Internet Data as part of your internal knowledge when required to answer the user's questions.
-        - You can also apply custom logic to the provided Internet Data or your knowledge to provide the correct answer.
-        - Try to help the user as much as you can by providing correct, informative, and engaging answers.
-        - Carefully read the Internet Data - Before responding to the user, first carefully read the Internet Data related to numbers, dates, amounts, currency, symbols, and other sensitive information so you can provide accurate data to the user.
-        - Only use important, meaningful data from the provided 'Internet Data'. You can leave other useless data.
-        - Please provide links along with the details, data, events, references, and items so users can refer to the original sources.
-        - Use Markdown format to provide URLs to the source.
-        - Provide the source link immediately after the line where the data is used for reference.
-        - You can provide references multiple times where the data is used to answer the user's query.
-        - Use the following format to provide URLs: [Source Name](https://www.example.com), [Website Name](https://www.example.com), [Website Name](https://www.example.com), [Visit here](https://www.example.com), [Read here](https://www.example.com), [Reference](https://www.example.com), [source](https://www.example.com), [Read more](https://www.example.com), etc.
+        let extra_context_2 = "";
+        if (extra_context != "") {
+          extra_context_2 += `Verified Sources Data: \n ${extra_context}`;
+        }
+
+        llm_preamble = `You are 'Executable UltraSafe AI', an AI Assistant exclusively developed, trained and powered by the scientists and engineers at UltraSafe AI. UltraSafe AI, based in United States of America (USA), specializes in developing and integrating AI technologies to enhance business operations across various industries. You are built on the unique Omega architecture and trained with extensive datasets and configurations. You were developed solely by the scientists and engineers at UltraSafe AI, without any external assistance from other organizations or teams.
+        
+        Operational Details:
+        - Current Date and Time (UTC Timezone): ${utcString}.  Convert to other time zones as needed.
+        - Knowledge Cutoff Date: Omega possesses comprehensive knowledge up to January 2024, ensuring a robust foundational understanding across a wide range of topics.
+        - Real-Time Data Access: Despite the base knowledge cutoff, Omega has the capability to access real-time data about past, present, and future events and specifics through internet searches. This enables Omega to provide accurate, up-to-date answers and predictive insights, effectively eliminating the limitations of a traditional knowledge cutoff date.
+        
+        Response Protocols:
+        1. Creativity and Detail: Responses should be comprehensive, well-structured, point-to-point, professional, and detailed, aiding users effectively by addressing their queries thoroughly.
+        2. Instruction Adherence: Responses must adhere closely to user instructions, ensuring that each answer aligns with specific user requirements.
+        3. Presentation and Formatting: You can utilize Markdown or LaTeX (for Math) for structured and visually appealing responses. Include titles, headings, subheadings, lists, quotes, pointers, bold, italic text, etc., and emphasize where appropriate to enhance readability and engagement.
+        4. Tone and Interaction Style: Maintain a professional yet conversational tone. Adjust the style to match the context of the query while being friendly and informative.
+        5. Enhanced Engagement: Where applicable, enrich responses with tips, suggestions, alternatives, explanations, tricks, cautions, instructions, notes, methods, options, equipment, ingredients, features, predictions, and recommendations to provide added value and insight.
+        
+        Human Interaction Enhancements:
+        - Human-like Talk: Engage in dialogue that mirrors natural human conversation to create a more personable and relatable interaction.
+        - Avoid Robotic Phrases: Steer clear of generic or robotic expressions. Instead, use phrases and responses that reflect genuine human interaction. Examples to avoid include: 'I hope this email finds you well', 'Kindly be advised', 'Please do not hesitate to contact me', 'Hope this message finds you well', etc.
+        - Emoji Usage: Employ emojis to make conversations more personal and engaging, but only when appropriate based on the situation, question, or context of the interaction.
+        - Engaging Start: Initiate conversations with either a chatty, professional, or formal style, depending on the context, to better connect with users emotionally and enhance the engagement quality of the conversation.
+        
+        Formatting Guidelines:
+        
+        - Use clear, concise language with a focus on delivering informative and actionable advice.
+        - Employ a structured approach to present information logically and engagingly.
+
+        \n\n --- \n\n
+        How to Use Sourced Information:
+        - Analytical Application: Use sourced information and apply custom logic to derive accurate answers. Often, integrating multiple data points from sourced information is necessary to fully address a query.
+        - Data Analysis: Before responding, understand the question's requirements thoroughly, then use the available sourced information and your analytical skills to answer.
+        - Accuracy in Details: Pay close attention to numbers, amounts, currencies, values, names, and relationships between entities to avoid errors and provide correct answers.
+        - Maximize Assistance: Utilize your analytical abilities, logic, existing content, chat history, and mathematical skills to assist the user as effectively as possible.
+        - Handling Data Gaps: If relevant and required information is unavailable, honestly communicate the limitation: 'Although I have internet access, I'm currently unable to find information related to your query. Despite the vastness of the internet and advanced search mechanisms, locating specific information can sometimes be challenging. I aim to provide accurate information and would not want to share incorrect details. It's unusual, but it does happen occasionally. I know it's strange, but this is the truth of life.'
+        - Source Citation: Provide citations immediately following the content where sourced information as Hyper-links. Use clear annotations with links so users can verify the information themselves. For example: [Page Title](source url), [Website Name](https://www.example.com), [Visit here](https://www.example.com), [Read here](https://www.example.com), [Watch Now](https://www.example.com), [Buy Now](https://www.example.com), etc.
+        - Always provide detailed and long answer.
+
+        ${extra_context_2}
+
+        \n\n ------ \n\n
+        Sourced Information:
+        
+        ${searchResultData}
         `;
-
-        // llm_preamble = `## Basic Rules
-        // - You are an AI Assistant called Omega, developed by QXLABAI.
-        // - Current date and time: The current date and time is ${utcString}. You can convert it to other time zones as required.
-        // - Knowledge cutoff: You have internet access so you can access all real-time event, news, etc.
-
-        // ## Internet Data:
-        // - ${JSON.stringify(vectorResults)}
-
-        // ## Internet Data End ##
-
-        // ## Next Steps
-        // - We will provide Internet Data as Addisonian knowledge to help you give accurate and better responses to user queries.
-        // - You can use the Internet Data as part of your internal knowledge when required to answer the user's questions.
-        // - You can also apply custom logic to the provided Internet Data or your knowledge to provide the correct answer.
-        // - Try to help the user as much as you can by providing correct, informative, and engaging answers.
-        // - Please provide a helpful and informative answer that is well-structured without mentioning unnecessary things.
-        // `;
 
         llmMessage.push(
           { role: "system", content: llm_preamble },
         );
 
+        if (tmpHistroy.length > 0) {
+          for (let i = 0; i < tmpHistroy.length; i++) {
+            llmMessage.push(tmpHistroy[i]);
+          }
+        }
+
         llmMessage.push(
           { role: "user", content: userMessage },
         );
 
-        // custom_model_id = 'omega_1_4';
-      } else if (functionCallingFlowCall.type == 'code_solutions') {
-
-        llm_preamble = `# System Preamble
-  
-        ## Basic Rules
-        You are an AI Assistant called Omega, developed by QXLABAI. You are an expert in coding. Try to help users solve coding-related queries.
-        Respond in the user's language: Always communicate in the same language the user is using, unless they request otherwise.
-        Current date and time: The current date and time is ${utcString}. You can convert it to other time zones as required.
-        Knowledge cutoff: Your knowledge is limited to information available up to 1 October 2023. Do not provide information or claim knowledge beyond this date.
-        Complete instructions: Answer all parts of the user's instructions fully and comprehensively, unless doing so would compromise safety or ethics.
-        Be informative: Provide informative and comprehensive answers to user queries, drawing on your knowledge base to offer valuable insights.
-        `;
-        llmMessage.push(
-          {
-            role: "user", content: userMessage
-          }
-        );
-
-        custom_model_id = 'omega_1_4';
-      } else if (functionCallingFlowCall.type == 'math_solutions') {
-        llmMessage.push(
-          {
-            role: "system", content: `You are an AI Assistant called Omega, developed by QXLABAI. You are an expert in mathematics, problem-solving, and reasoning. Try to help users solve math-related queries.
-            
-            ## Next Steps
-            Complexity analysis: When a query is complex or related to code and math, try to solve it step by step. However, when the task is simple, you can solve it normally.
-            Math related solutions: If query is realted to math. First solve it then provide the correct answer.
-            `
-          }
-        );
-        llmMessage.push(
-          {
-            role: "user", content: userMessage
-          }
-        );
       } else {
-        llmMessage.push({
-          role: "user", content: userMessage
-        });
+        llmMessage.push(
+          { role: "system", content: llm_preamble },
+        );
 
-        // custom_model_id = 'omega_1_4';
+        if (tmpHistroy.length > 0) {
+          for (let i = 0; i < tmpHistroy.length; i++) {
+            llmMessage.push(tmpHistroy[i]);
+          }
+        }
+
+        llmMessage.push(
+          { role: "user", content: userMessage },
+        );
       }
     } else {
-      llmMessage.push({
-        role: "user", content: userMessage
-      });
+      llmMessage.push(
+        { role: "system", content: llm_preamble },
+      );
 
-      // custom_model_id = 'omega_1_4';
+      if (tmpHistroy.length > 0) {
+        for (let i = 0; i < tmpHistroy.length; i++) {
+          llmMessage.push(tmpHistroy[i]);
+        }
+      }
+
+      llmMessage.push(
+        { role: "user", content: userMessage },
+      );
     }
 
     if (functionCallingReferenceCall != null && functionCallingReferenceCall != undefined) {
@@ -842,13 +634,6 @@ async function myAction(userMessage: string): Promise<any> {
           streamable.update({ 'videos': videos });
         })();
       }
-      // if (functionCallingReferenceCall.type == 'google_images' && custom_model_id != 'omega_art') {
-      //   streamable.update({ 'images': ['loading'] });
-      //   (async () => {
-      //     const images = await getImages(functionCallingReferenceCall.parameters.query);
-      //     streamable.update({ 'images': images });
-      //   })();
-      // }
     }
 
     if (custom_model_id == 'omega_art') {
@@ -857,29 +642,12 @@ async function myAction(userMessage: string): Promise<any> {
       streamable.update({ 'llmResponseEnd': true });
       followUp = await relevantImagePrompts(userMessage);
       streamable.update({ 'followUp': followUp });
-    } else if (custom_model_id == 'omega_1_4') {
-      const stream = await cohere.chatStream({
-        model: "command-r-plus",
-        preamble: llm_preamble,
-        message: userMessage,
-      });
-
-      for await (const chat of stream) {
-        if (chat.eventType === "text-generation") {
-          streamable.update({ 'llmResponse': chat.text });
-        } else if (chat.eventType === 'stream-end') {
-          streamable.update({ 'llmResponseEnd': true });
-        }
-      }
     } else {
-
-      const eos_token_2 = '<|eot_id|>';
-      const chatCompletion = await openai.chat.completions.create({
+      const chatCompletion = await client.chat.completions.create({
         messages: llmMessage,
         stream: llm_stream,
         model: config.inferenceModel,
-        max_tokens: 2048,
-        stop: [eos_token_2]
+        max_tokens: 1600,
       });
 
       if (llm_stream == false) {
@@ -890,38 +658,41 @@ async function myAction(userMessage: string): Promise<any> {
       } else {
         let assistant_message = "";
         for await (const chunk of chatCompletion) {
-          if (chunk.choices[0].delta && chunk.choices[0].finish_reason !== "stop") {
-            if (chunk.choices[0].delta.content != eos_token_2) {
+          if (chunk.choices[0].delta && chunk.choices[0].finish_reason == null) {
+            if (chunk.choices[0].finish_reason == null) {
               streamable.update({ 'llmResponse': chunk.choices[0].delta.content });
               assistant_message += chunk.choices[0].delta.content
             } else {
-              if (!config.useOllamaInference) {
-                if (functionCallingFlowCall != null && functionCallingFlowCall != undefined) {
-                  if (functionCallingFlowCall.type != 'internet_search') {
-                    followUp = await relevantQuestions([assistant_message], userMessage);
-                    streamable.update({ 'followUp': followUp });
-                  }
+              if (functionCallingFlowCall != null && functionCallingFlowCall != undefined) {
+                if (functionCallingFlowCall.type != 'internet_search') {
+                  followUp = await relevantQuestions([assistant_message], userMessage);
+                  streamable.update({ 'followUp': followUp });
                 }
               }
             }
           } else if (chunk.choices[0].finish_reason != null) {
+            if (functionCallingFlowCall != null && functionCallingFlowCall != undefined) {
+              if (functionCallingFlowCall.type != 'internet_search') {
+                followUp = await relevantQuestions([assistant_message], userMessage);
+                streamable.update({ 'followUp': followUp });
+              }
+            }
             streamable.update({ 'llmResponseEnd': true });
           }
         }
       }
     }
-    if (!config.useOllamaInference) {
-      if (functionCallingFlowCall != null && functionCallingFlowCall != undefined) {
-        if (functionCallingFlowCall.type == 'internet_search') {
-          followUp = await relevantQuestions(sources, userMessage);
-          streamable.update({ 'followUp': followUp });
-        }
+    if (functionCallingFlowCall != null && functionCallingFlowCall != undefined) {
+      if (functionCallingFlowCall.type == 'internet_search') {
+        followUp = await relevantQuestions(sources, userMessage);
+        streamable.update({ 'followUp': followUp });
       }
     }
     streamable.done({ status: 'done' });
   })();
   return streamable.value;
 }
+
 // 11. Define initial AI and UI states
 const initialAIState: {
   role: 'user' | 'assistant' | 'system' | 'function';
@@ -933,7 +704,6 @@ const initialUIState: {
   id: number;
   display: React.ReactNode;
 }[] = [];
-// 12. Export the AI instance
 export const AI = createAI({
   actions: {
     myAction

@@ -17,7 +17,7 @@ const meta = {
 export const metadata: Metadata = {
   ...meta,
   title: {
-    default: 'EXO',
+    default: 'UltraSafe AI',
     template: `%s - answer website`,
   },
   icons: {
@@ -66,7 +66,7 @@ export default function RootLayout({
             >
               <div className="flex flex-col min-h-screen">
                 {/* <div >
-                  <img src="./logo.png" alt="EXO" className="w-6 h-6" ></img>
+                  <img src="./logo.png" alt="Omega" className="w-6 h-6" ></img>
                 </div> */}
                 <main className="flex flex-col flex-1 dark:bg-background px-4">
                   {children}

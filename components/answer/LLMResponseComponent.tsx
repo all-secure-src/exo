@@ -1,56 +1,67 @@
-// 1. Define the 'LLMResponseComponentProps' interface with properties for 'llmResponse', 'currentLlmResponse', and 'index'
-interface LLMResponseComponentProps {
-    llmResponse: string;
-    currentLlmResponse: string;
-    index: number;
-}
-
-// 2. Import the 'Markdown' component from 'react-markdown'
+import React from 'react';
 import Markdown from 'react-markdown';
 
-// 3. Define the 'StreamingComponent' functional component that renders the 'currentLlmResponse'
+interface LLMResponseComponentProps {
+  llmResponse: string;
+  currentLlmResponse: string;
+  index: number;
+  isStreaming: boolean;
+}
+
+const ShimmerEffect = () => (
+  <div className="animate-pulse flex space-x-4">
+    <div className="flex-1 space-y-6 py-1">
+      <div className="h-2 bg-slate-200 rounded"></div>
+      <div className="space-y-3">
+        <div className="grid grid-cols-3 gap-4">
+          <div className="h-2 bg-slate-200 rounded col-span-2"></div>
+          <div className="h-2 bg-slate-200 rounded col-span-1"></div>
+        </div>
+        <div className="h-2 bg-slate-200 rounded"></div>
+      </div>
+    </div>
+  </div>
+);
+
 const StreamingComponent = ({ currentLlmResponse }: { currentLlmResponse: string }) => {
-    return (
-        <>
-            {currentLlmResponse && (
-                <div className="dark:bg-slate-800 bg-white shadow-lg rounded-lg p-4 mt-4">
-                    <div className="flex items-center">
-                        <h2 className="text-lg font-semibold flex-grow dark:text-white text-black">Omega Think (Alpha v1.0)</h2>
-                        {/* <img src="./omega.png" alt="omega logo" className='w-6 h-6' /> */}
-                    </div>
-                    <div className="dark:text-gray-300 text-gray-800">{currentLlmResponse}</div>
-                </div>
-            )}
-        </>
-    );
+  return (
+    <>
+      {currentLlmResponse && (
+        <div className="dark:bg-slate-800 bg-white shadow-lg rounded-lg p-4 mt-4">
+          <div className="dark:text-gray-300 text-gray-800">
+            <Markdown>{currentLlmResponse}</Markdown>
+          </div>
+        </div>
+      )}
+    </>
+  );
 };
 
-// 4. Define the 'LLMResponseComponent' functional component that takes 'llmResponse', 'currentLlmResponse', and 'index' as props
-const LLMResponseComponent = ({ llmResponse, currentLlmResponse, index }: LLMResponseComponentProps) => {
-    // 5. Check if 'llmResponse' is not empty
-    const hasLlmResponse = llmResponse && llmResponse.trim().length > 0;
+const LLMResponseComponent: React.FC<LLMResponseComponentProps> = ({
+  llmResponse,
+  currentLlmResponse,
+  index,
+  isStreaming
+}) => {
+  const hasLlmResponse = llmResponse && llmResponse.trim().length > 0;
 
-    return (
-        <>
-            {hasLlmResponse ? (
-                // 6. If 'llmResponse' is not empty, render a div with the 'Markdown' component
-                <div className="dark:bg-slate-800 bg-white shadow-lg rounded-lg p-4 mt-4">
-                    <div className="flex items-center">
-                        <h2 className="text-lg font-semibold flex-grow dark:text-white text-black">Omega Think (Alpha v1.0)</h2>
-                    </div>
-                    <div className="dark:text-gray-300 text-gray-800 markdown-container">
-                        <Markdown>{llmResponse}</Markdown>
-                        <div className="flex items-center justify-end">
-                            <img src="./powered-by-omega.svg" alt="powered by omega" className='mt-2 h-6' />
-                        </div>
-                    </div>
-                </div>
-            ) : (
-                // 7. If 'llmResponse' is empty, render the 'StreamingComponent' with 'currentLlmResponse'
-                <StreamingComponent currentLlmResponse={currentLlmResponse} />
-            )}
-        </>
-    );
+  return (
+    <>
+      {isStreaming && !hasLlmResponse ? (
+        <div className="dark:bg-slate-800 bg-white shadow-lg rounded-lg p-4 mt-4">
+          <ShimmerEffect />
+        </div>
+      ) : hasLlmResponse ? (
+        <div className="dark:bg-slate-800 bg-white shadow-lg rounded-lg p-4 mt-4">
+          <div className="dark:text-gray-300 text-gray-800 markdown-container">
+            <Markdown>{llmResponse}</Markdown>
+          </div>
+        </div>
+      ) : (
+        <StreamingComponent currentLlmResponse={currentLlmResponse} />
+      )}
+    </>
+  );
 };
 
 export default LLMResponseComponent;
