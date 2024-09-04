@@ -32,7 +32,7 @@ export async function getSources2(query: string, freshness: string = ""): Promis
     freshness = ""
   }
   try {
-    const url = `http://localhost:8083/qx/search/alpha/v2`;
+    const url = `${process.env.US_API_DOMAIN}/qx/search/alpha/v2`;
     const data = JSON.stringify({
       search: query,
       freshness: freshness
@@ -204,8 +204,8 @@ const relevantImagePrompts = async (query: string): Promise<any> => {
 };
 
 export async function generate_image(prompt: string) {
-  const url = 'http://localhost:8083/omega/picasso/v1/images/generations';
-  const apiKey = 'akm0erln-3o1c0ba9-53aadc23-5155a6e6';
+  const url = `${process.env.US_API_DOMAIN}/omega/private/picasso/v1/images/generations`;
+  const apiKey = process.env.US_API_KEY;
   const data = {
     prompt: prompt,
     // negative_prompt: "(deformed, distorted, disfigured:1.3), poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, blurry, amputation, NSFW",
@@ -227,6 +227,7 @@ export async function generate_image(prompt: string) {
     const responseData = response.data;
 
     if (responseData.status === 1) {
+      await delay(1000);
       const normalizedData = {
         type: 'generate_human_image',
         images: [
@@ -252,7 +253,6 @@ export async function generate_image(prompt: string) {
           }
         ]
       };
-      await delay(1000);
       return normalizedData;
     } else {
       // console.error('Error generating image:', responseData.message);

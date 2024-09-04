@@ -106,7 +106,7 @@ export async function internet_search(search: string, freshness: string = "") {
         freshness = ""
     }
     try {
-        const response = await fetch(`http://localhost:8083/qx/search/alpha/v2`, {
+        const response = await fetch(`${process.env.US_API_DOMAIN}/qx/search/alpha/v2`, {
             method: 'POST',
             headers: {
                 'authorization': process.env.US_API_KEY,
