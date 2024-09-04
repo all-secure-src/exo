@@ -13,7 +13,7 @@ const LoginPopup: React.FC<LoginPopupProps> = ({ onLogin, onClose }) => {
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (email === 'product@beta.com' && password === 'secure@2024') {
+    if (email === 'beta@product.com' && password === 'secure@2024') {
       const loginTime = new Date().getTime().toString(); // Convert to string
       sessionStorage.setItem('loginTime', loginTime);
       sessionStorage.setItem('isLoggedIn', 'true');
