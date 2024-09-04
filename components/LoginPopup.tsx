@@ -18,7 +18,7 @@ const LoginPopup: React.FC<LoginPopupProps> = ({ onLogin, onClose }) => {
             sessionStorage.setItem('loginTime', loginTime);
             sessionStorage.setItem('isLoggedIn', 'true');
             onLogin();
-        } else if (email === 'wiemer@product.com' && password === 'wimer@2024') {
+        } else if (email === 'wiemer@product.com' && password === 'wiemer@2024') {
             const loginTime = new Date().getTime().toString(); // Convert to string
             sessionStorage.setItem('loginTime', loginTime);
             sessionStorage.setItem('isLoggedIn', 'true');
