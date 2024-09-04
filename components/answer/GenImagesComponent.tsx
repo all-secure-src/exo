@@ -101,7 +101,7 @@ const GenImagesComponent: React.FC<ImagesComponentProps> = ({ omega_art }) => {
             {omega_art.length <= 1 ? (
                 <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg p-4 mt-4">
                     <div className="items-center">
-                        <h2 className="text-lg font-semibold flex-grow text-black dark:text-white">UltraSafe Imagine (Alpha v1.0)</h2>
+                        <h2 className="text-lg font-semibold flex-grow text-black dark:text-white">QX Imagine (Alpha v1.0)</h2>
                         <div className="flex flex-wrap">
                             {Array.from({ length: 4 }).map((_, index) => (
                                 <div key={index} className="w-1/2 p-1">
@@ -116,7 +116,7 @@ const GenImagesComponent: React.FC<ImagesComponentProps> = ({ omega_art }) => {
             ) : (
                 <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg p-4 mt-4">
                     <div className="flex items-center">
-                        <h2 className="text-lg font-semibold flex-grow text-black dark:text-white">UltraSafe Imagine (Alpha v1.0)</h2>
+                        <h2 className="text-lg font-semibold flex-grow text-black dark:text-white">QX Imagine (Alpha v1.0)</h2>
                     </div>
                     <div className="flex flex-wrap mx-1 transition-all duration-500 overflow-hidden">
                         {omega_art.slice(0, omega_art.length > 2 ? 4 : 2).map((image, index) => (
