@@ -58,7 +58,7 @@ const LoginPopup: React.FC<LoginPopupProps> = ({ onLogin, onClose }) => {
         </form>
       </div>
     </div>
-  );
+  )
 };
 
 export default LoginPopup;

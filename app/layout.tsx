@@ -17,7 +17,7 @@ const meta = {
 export const metadata: Metadata = {
   ...meta,
   title: {
-    default: 'UltraSafe AI',
+    default: 'QX LAB AI',
     template: `%s - answer website`,
   },
   icons: {
