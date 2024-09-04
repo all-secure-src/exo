@@ -53,7 +53,7 @@ const LoginPopup: React.FC<LoginPopupProps> = ({ onLogin, onClose }) => {
           {error && <p className="text-red-500 mb-4">{error}</p>}
           <div className="flex justify-between">
             <Button type="submit">Login</Button>
-            <Button onClick={onClose} variant="outline">Close</Button>
+            {/* <Button onClick={onClose} variant="outline">Close</Button> */}
           </div>
         </form>
       </div>
